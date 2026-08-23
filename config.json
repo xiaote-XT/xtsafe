@@ -23,7 +23,8 @@
     { "riskLevel": 1, "description": "可能用于读取设备信息，绘制用户画像", "permissions": ["INTERNET","READ_PHONE_STATE","READ_CONTACTS","ACCESS_FINE_LOCATION"] }
   ],
   "classRules": [
-    { "riskLevel": 1, "description": "应用注入XT工具箱资源分享提示弹窗", "className": "xiaote.TanChuang" },
+    { "riskLevel": 1, "description": "应用被注入XT工具箱资源分享提示弹窗", "className": "xiaote.TanChuang" },
+    { "riskLevel": 1, "description": "应用疑似被注入常见引流弹窗，请勿相信弹窗广告", "className": "qyma.app.Dialog" },
     { "riskLevel": 2, "description": "应用被Epic加固混淆，可能用于隐藏恶意代码", "className": "Epic.ProtectApp" },
     { "riskLevel": 2, "description": "应用被云镜安全混淆，可能用于隐藏恶意代码和反沙箱安全验证", "className": "yj.v3.pt" },
     { "riskLevel": 2, "description": "应用被常见工具注入，可能存在强制分享行为", "className": "com.tencent.a.SetupInfoActivity" },

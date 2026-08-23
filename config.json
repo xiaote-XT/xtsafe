@@ -78,6 +78,7 @@
   ],
   "whitelist": [
     { "packageName": "xiaote.AnQuan", "signatureMd5": "259f172bcb9692517ee05ca7f589d635"},
+    { "packageName": "com.rosan.installer.x.revived", "signatureMd5": "d8923ffd32a1a3ddfe85eeef03c3a34d"},
     { "packageName": "com.tencent.mobileqq", "signatureMd5": "a6b745bf24a2c277527716f6f36eb68d" },
     { "packageName": "com.iflytek.inputmethod", "signatureMd5": "452af6b11a606c6674871b84510acb70" },
     { "packageName": "com.qq.qcloud", "signatureMd5": "f5d1d563d51eb54601192a29bdc4a825" },

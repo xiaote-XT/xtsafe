@@ -60,7 +60,7 @@
             android:theme="@android:style/Theme.DeviceDefault.Light.Dialog" />
 
         <service
-            android:name=".AntiLockService"
+            android:name=".XTSafeMainService"
             android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>

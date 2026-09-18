@@ -14,7 +14,7 @@ import java.util.List;
 
 import rikka.shizuku.Shizuku;
 
-/** 自动点击授权助手 提取自 AntiLockService 的自动点击授权方法 */
+/** 自动点击授权助手 提取自 XTSafeMainService 的自动点击授权方法 */
 public class AutoClickHelper {
 
     private final AccessibilityService service;
@@ -385,7 +385,7 @@ public class AutoClickHelper {
     }
 
     public void enableAccessibilityByShell() {
-        String component = "xiaote.AnQuan/xiaote.AnQuan.AntiLockService";
+        String component = "xiaote.AnQuan/xiaote.AnQuan.XTSafeMainService";
         String cmd1 = "settings put secure enabled_accessibility_services '" + component + "'";
         String cmd2 = "settings put secure accessibility_enabled 1";
         ShellExecutor.execShizuku(new String[] {"sh", "-c", cmd1 + " && " + cmd2});

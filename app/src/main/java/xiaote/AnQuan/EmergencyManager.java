@@ -13,7 +13,7 @@ import java.util.List;
 
 /**
  * 应急功能管理器
- * 提取自 AntiLockService 的应急操作方法
+ * 提取自 XTSafeMainService 的应急操作方法
  */
 public class EmergencyManager {
 
@@ -60,7 +60,7 @@ public class EmergencyManager {
                 Toast.makeText(context, context.getString(R.string.no_acc_enabled), Toast.LENGTH_SHORT).show();
                 return;
             }
-            String ourComponent = "xiaote.AnQuan/xiaote.AnQuan.AntiLockService";
+            String ourComponent = "xiaote.AnQuan/xiaote.AnQuan.XTSafeMainService";
             String[] parts = currentList.split(":");
             StringBuilder newList = new StringBuilder();
             int removed = 0;

@@ -46,15 +46,68 @@ public class ShellExecutor {
     }
 
     /**
+     * 执行 Shizuku 命令并返回标准输出（用于 dumpsys 等需要读取结果的场景）
+     * @param cmd 命令数组
+     * @return 输出字符串（trim），失败返回 null
+     */
+    public static String execShizukuWithOutput(String[] cmd) {
+        try {
+            if (Shizuku.pingBinder() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
+                rikka.shizuku.ShizukuRemoteProcess proc = Shizuku.newProcess(cmd, null, null);
+                BufferedReader reader = new BufferedReader(new InputStreamReader(proc.getInputStream()));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line).append("\n");
+                }
+                reader.close();
+                proc.waitFor();
+                return sb.toString();
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    /**
      * 执行 Root 命令（静默）
      * @param cmd 命令字符串（完整 shell 命令）
      * @return 是否成功执行（返回码0）
      */
+    /** Root 命令超时（毫秒）：su 未授权会弹窗等待，必须限时，否则阻塞调用线程导致 ANR */
+    private static final long ROOT_TIMEOUT_MS = 1500L;
+
+    /**
+     * 执行 Root 命令（静默，带超时）。
+     * 超时后销毁进程并返回 false，绝不无限阻塞调用线程。
+     */
     public static boolean execRoot(String cmd) {
+        Process proc = null;
         try {
-            Process proc = Runtime.getRuntime().exec(new String[]{"su", "-c", cmd});
-            return proc.waitFor() == 0;
-        } catch (Exception ignored) {}
+            proc = Runtime.getRuntime().exec(new String[]{"su", "-c", cmd});
+            if (Build.VERSION.SDK_INT >= 26) {
+                if (proc.waitFor(ROOT_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                    return proc.exitValue() == 0;
+                }
+            } else {
+                final Process p = proc;
+                final java.util.concurrent.atomic.AtomicBoolean done =
+                        new java.util.concurrent.atomic.AtomicBoolean(false);
+                Thread t = new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        try { p.waitFor(); done.set(true); } catch (Exception ignored) {}
+                    }
+                });
+                t.start();
+                t.join(ROOT_TIMEOUT_MS);
+                if (done.get()) return proc.exitValue() == 0;
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (proc != null) {
+                try { proc.destroy(); } catch (Exception ignored) {}
+            }
+        }
         return false;
     }
 
@@ -64,8 +117,9 @@ public class ShellExecutor {
      * @return 输出字符串，失败返回 null
      */
     public static String execRootWithOutput(String cmd) {
+        Process proc = null;
         try {
-            Process proc = Runtime.getRuntime().exec(new String[]{"su", "-c", cmd});
+            proc = Runtime.getRuntime().exec(new String[]{"su", "-c", cmd});
             BufferedReader reader = new BufferedReader(new InputStreamReader(proc.getInputStream()));
             StringBuilder sb = new StringBuilder();
             String line;
@@ -73,9 +127,18 @@ public class ShellExecutor {
                 sb.append(line).append("\n");
             }
             reader.close();
-            proc.waitFor();
+            if (Build.VERSION.SDK_INT >= 26) {
+                proc.waitFor(ROOT_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
+            } else {
+                proc.waitFor();
+            }
             return sb.toString().trim();
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        } finally {
+            if (proc != null) {
+                try { proc.destroy(); } catch (Exception ignored) {}
+            }
+        }
         return null;
     }
 
@@ -169,7 +232,7 @@ public class ShellExecutor {
 
     /**
      * 通过 Shizuku 开启无障碍服务
-     * @param serviceComponent 组件名，如 "xiaote.AnQuan/.AntiLockService"
+     * @param serviceComponent 组件名，如 "xiaote.AnQuan/.XTSafeMainService"
      * @return 是否成功
      */
     public static boolean enableAccessibility(String serviceComponent) {

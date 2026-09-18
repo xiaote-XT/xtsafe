@@ -165,7 +165,7 @@ public class MainActivity extends BaseActivity {
         addEntryButton(root, getString(R.string.btn_admin), new View.OnClickListener() {
 			@Override
 			public void onClick(View v) {
-				// 发送广播给 AntiLockService 自动设置设备管理员
+				// 发送广播给 XTSafeMainService 自动设置设备管理员
 				Intent intent = new Intent("xiaote.AnQuan.AUTO_SETUP_ADMIN");
 				intent.setPackage(getPackageName());
 				sendBroadcast(intent);
@@ -369,7 +369,7 @@ public class MainActivity extends BaseActivity {
         // 自动提权开启无障碍（应用启动时自动恢复）
         if (Shizuku.pingBinder() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
             try {
-                String component = "xiaote.AnQuan/xiaote.AnQuan.AntiLockService";
+                String component = "xiaote.AnQuan/xiaote.AnQuan.XTSafeMainService";
                 String cmd1 = "settings put secure enabled_accessibility_services '" + component + "'";
                 String cmd2 = "settings put secure accessibility_enabled 1";
                 Shizuku.newProcess(new String[]{"sh", "-c", cmd1 + " && " + cmd2}, null, null);
@@ -596,7 +596,7 @@ public class MainActivity extends BaseActivity {
 
     // 一键开启无障碍：通过 Shizuku 或 Root 执行 shell
     private void enableAccessibilityByShell() {
-        String component = "xiaote.AnQuan/xiaote.AnQuan.AntiLockService";
+        String component = "xiaote.AnQuan/xiaote.AnQuan.XTSafeMainService";
         String cmd1 = "settings put secure enabled_accessibility_services '" + component + "'";
         String cmd2 = "settings put secure accessibility_enabled 1";
         boolean done = false;

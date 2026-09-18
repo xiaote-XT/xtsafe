@@ -43,7 +43,7 @@ import rikka.shizuku.Shizuku;
 
 /**
  * 浮窗 UI 管理器
- * 提取自 AntiLockService 的所有浮窗 UI 代码
+ * 提取自 XTSafeMainService 的所有浮窗 UI 代码
  */
 public class OverlayManager {
 
@@ -83,6 +83,14 @@ public class OverlayManager {
     // ==================== 状态栏悬浮按钮 ====================
 
     public void createStatusBarDot() {
+        // 悬浮按钮总开关：关闭时不创建，并移除已有悬浮窗（强制置顶逻辑不受影响）
+        if (!dotPrefs.getBoolean("dot_enabled", true)) {
+            if (statusBarView != null) {
+                try { wm.removeView(statusBarView); } catch (Exception e) {}
+                statusBarView = null;
+            }
+            return;
+        }
         if (statusBarView != null) {
             try { wm.removeView(statusBarView); } catch (Exception e) {}
             statusBarView = null;

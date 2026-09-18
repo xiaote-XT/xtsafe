@@ -7,7 +7,7 @@ import android.os.Build;
 
 /**
  * 颜色/深浅色模式辅助工具
- * 提取自 AntiLockService 的颜色相关方法
+ * 提取自 XTSafeMainService 的颜色相关方法
  */
 public class ColorHelper {
 

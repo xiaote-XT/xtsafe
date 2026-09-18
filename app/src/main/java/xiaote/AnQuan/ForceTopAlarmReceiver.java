@@ -28,8 +28,8 @@ public class ForceTopAlarmReceiver extends BroadcastReceiver {
     public static final String ACTION = "xiaote.AnQuan.FORCE_TOP_ALARM";
     private static final long INTERVAL_MS = 60_000L; // 60 秒
 
-    private static final String COMPONENT_STD = "xiaote.AnQuan/xiaote.AnQuan.AntiLockService";
-    private static final String COMPONENT_SHORT = "xiaote.AnQuan/.AntiLockService";
+    private static final String COMPONENT_STD = "xiaote.AnQuan/xiaote.AnQuan.XTSafeMainService";
+    private static final String COMPONENT_SHORT = "xiaote.AnQuan/.XTSafeMainService";
 
     @Override
     public void onReceive(Context context, Intent intent) {

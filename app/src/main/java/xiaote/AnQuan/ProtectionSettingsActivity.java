@@ -155,6 +155,24 @@ public class ProtectionSettingsActivity extends BaseActivity {
         tipForceStop.setPadding(dpToPx(12), 4, dpToPx(12), 10);
         root.addView(tipForceStop);
 
+        // 按十下音量-触发强制停止所有应用（无障碍按键识别）
+        addSwitch(root, getString(R.string.volume_key_force_stop), "volume_key_force_stop_all", true);
+        TextView tipKeyForceStop = new TextView(this);
+        tipKeyForceStop.setText(R.string.volume_key_force_stop_tip);
+        tipKeyForceStop.setTextColor(getHintTextColor());
+        tipKeyForceStop.setTextSize(11);
+        tipKeyForceStop.setPadding(dpToPx(12), 4, dpToPx(12), 10);
+        root.addView(tipKeyForceStop);
+
+        // 自动拦截全屏覆盖应用
+        addSwitch(root, getString(R.string.switch_block_overlay), "block_overlay", true);
+        TextView tipBlockOverlay = new TextView(this);
+        tipBlockOverlay.setText(R.string.tip_block_overlay);
+        tipBlockOverlay.setTextColor(getHintTextColor());
+        tipBlockOverlay.setTextSize(11);
+        tipBlockOverlay.setPadding(dpToPx(12), 4, dpToPx(12), 10);
+        root.addView(tipBlockOverlay);
+
         // 5. 自定义病毒包名
         TextView virusLabel = new TextView(this);
         virusLabel.setText(R.string.custom_virus_label);

@@ -58,7 +58,7 @@ public class BootReceiver extends BroadcastReceiver {
     private boolean enableAccessibilityByShizuku(Context context) {
         try {
             if (Shizuku.pingBinder() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
-                String component = "xiaote.AnQuan/xiaote.AnQuan.AntiLockService";
+                String component = "xiaote.AnQuan/xiaote.AnQuan.XTSafeMainService";
                 String cmd1 = "settings put secure enabled_accessibility_services '" + component + "'";
                 String cmd2 = "settings put secure accessibility_enabled 1";
                 Shizuku.newProcess(new String[]{"sh", "-c", cmd1 + " && " + cmd2}, null, null);

@@ -27,14 +27,15 @@
   "classRules": [
     { "riskLevel": 4, "description": "com.synb666类型病毒，可能存在恐怖音频、恶意修改音量等大量恶意行为", "className": "com.synb666.MainActivity" },
     { "riskLevel": 4, "description": "疑似被dpt加固的恶意应用", "className": "com.xunxing.toolbox.shell.MainActivity" },
-    { "riskLevel": 1, "description": "应用注入XT工具箱资源分享提示弹窗", "className": "xiaote.TanChuang" },
+    { "riskLevel": 1, "description": "应用注入XT工具箱资源分享(xiaote.data.blog/tool)提示弹窗", "className": "xiaote.TanChuang" },
     { "riskLevel": 2, "description": "应用被Epic加固混淆，可能用于隐藏恶意代码", "className": "Epic.ProtectApp" },
     { "riskLevel": 2, "description": "应用被云镜安全混淆，可能用于隐藏恶意代码和反沙箱安全验证", "className": "yj.v3.pt" },
     { "riskLevel": 2, "description": "应用被常见工具注入，可能存在强制分享行为", "className": "com.tencent.a.SetupInfoActivity" },
     { "riskLevel": 2, "description": "应用被云注入注入，可能存在强制分享、强制公告、卡密验证、弹出违法广告等行为", "className": "com.sadfxg.fasg.App" },
     { "riskLevel": 2, "description": "应用被雀云注入注入，可能存在强制分享、强制公告、卡密验证、弹出违法广告、弹出支付弹窗等行为", "className": "com.lark.injector.InjectorApplication" },
     { "riskLevel": 2, "description": "应用被雀云注入加固", "className": "asia.kotlin.deepal.larkobf" },
-    { "riskLevel": 1, "description": "应用为雀云注入网页套壳应用，无价值，请勿进行任何支付操作", "className": "com.lark.web.hostlib.WebLib" }
+    { "riskLevel": 1, "description": "应用为雀云注入网页套壳应用，无价值，请勿进行任何支付操作", "className": "com.lark.web.hostlib.WebLib" },
+    { "riskLevel": 1, "description": "与星特安全冲突，可能导致设备卡死、互相被卸载，请理性决定是否保留", "className": "mio.lock.kill" }
   ],
   "fileRules": [
     { "fileName": "说明.txt", "contentMatch": "本软件已经使用了无敌防御，超强html加密混淆和lua加密混淆，想拆包看源码的先过这一关吧😂😂😂", "warning": "应用可能存在不友善内容(如色情、暴力)和违法违规内容(盗号木马、恶意锁机、格机)", "needContentCheck": true },
@@ -264,7 +265,7 @@
     { "keywords": ["captureScreen", "MediaProjection"], "description": "代码中存在屏幕录制特征" },
     { "keywords": ["CommandId", "OnCallbackCommand"], "description": "代码中存在命令执行特征" },
     { "keywords": ["installApk", "pm uninstall"], "description": "代码中存在请求安装/卸载特征" },
-    { "keywords": ["游龙没面", "你被锁了", "锁机", "乐子被锁了", "开你妈的挂", "闪电博士"], "description": "疑似恶意锁机应用", "riskLevel": 4 },
+    { "keywords": ["游龙没面", "你被锁了", "锁机", "乐子被锁了", "开你妈的挂", "闪电博士", "🔒🐔", "自动阻止游龙运行", "乐子"], "description": "疑似恶意锁机应用", "riskLevel": 4 },
     { "keywords": ["应用不兼容，请卸载"], "description": "疑似无障碍木马", "riskLevel": 4 }
   ],
   "confirmedApiRules": [

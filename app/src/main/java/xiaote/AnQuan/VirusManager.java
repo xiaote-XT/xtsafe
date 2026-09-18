@@ -6,6 +6,8 @@ import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.widget.Toast;
 
 import java.util.List;
@@ -15,16 +17,28 @@ import rikka.shizuku.Shizuku;
 
 /**
  * 病毒应用管理器
- * 提取自 AntiLockService 的病毒扫描/禁止/卸载相关方法
+ * 提取自 XTSafeMainService 的病毒扫描/禁止/卸载相关方法
  */
 public class VirusManager {
 
     private final Context context;
     private final PackageManager pm;
+    /** 扫描/拦截可能在工作线程执行，Toast 必须回到主线程显示 */
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     public VirusManager(Context context) {
         this.context = context;
         this.pm = context.getPackageManager();
+    }
+
+    /** 主线程 Toast（工作线程调用安全） */
+    private void toast(final String msg) {
+        mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                try { Toast.makeText(context, msg, Toast.LENGTH_SHORT).show(); } catch (Exception ignored) {}
+            }
+        });
     }
 
     /**
@@ -82,7 +96,7 @@ public class VirusManager {
                         new String[]{"pm", "uninstall", "--user", "0", packageName},
                         null, null);
                 blocked = true;
-                Toast.makeText(context, context.getString(R.string.virus_shizuku_uninstalled, packageName), Toast.LENGTH_SHORT).show();
+                toast(context.getString(R.string.virus_shizuku_uninstalled, packageName));
             } catch (Exception e) {
                 // 失败则尝试下一种方案
             }
@@ -111,8 +125,7 @@ public class VirusManager {
             ShellExecutor.execShizuku(new String[]{"am", "force-stop", packageName});
             ShellExecutor.execRoot("am force-stop " + packageName);
         } else {
-            Toast.makeText(context, context.getString(R.string.virus_uninstall_fail, packageName),
-                    Toast.LENGTH_LONG).show();
+            toast(context.getString(R.string.virus_uninstall_fail, packageName));
         }
     }
 }

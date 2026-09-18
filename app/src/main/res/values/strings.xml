@@ -144,11 +144,18 @@
     <string name="pos_center">居中</string>
     <string name="pos_right">右侧</string>
     <string name="label_force_top">强制置顶（不在列表时重启服务）</string>
+    <string name="switch_show_dot">显示悬浮按钮</string>
+    <string name="dot_off_force_top_off">已关闭悬浮按钮，强制置顶一并关闭</string>
+    <string name="tip_show_dot">关闭后不创建状态栏悬浮按钮，并一并关闭强制置顶</string>
     <string name="stop_on_screen_off">锁屏自动停止强制置顶（实验性）</string>
     <string name="stop_on_screen_off_tip">开启=锁屏时停止强制置顶；关闭=锁屏期间保持循环（测试用）</string>
     <string name="background_keep_alive">后台保活优化</string>
     <string name="background_keep_alive_tip">开启后以前台服务方式运行，降低被系统杀死的概率</string>
     <string name="force_top_mode_label">置顶模式:</string>
+    <string name="mode_warn_title">置顶模式提示</string>
+    <string name="mode_warn_msg">重启服务模式会周期性移除并加回无障碍服务，这可能导致在您执行滑动等操作时断触，如果您在游玩游戏，建议切换到最高优先级模式，这可能能提升您的游玩体验</string>
+    <string name="switch_restart_mode">切换最高优先级</string>
+    <string name="close_dialog">关闭弹窗</string>
     <string name="mode_restart">重启服务</string>
     <string name="mode_priority">最高优先级</string>
     <string name="mode_mixed">混合模式</string>
@@ -168,6 +175,12 @@
     <string name="volume_max_tip">当音量超过防护阈值时，自动弹出卸载列表</string>
     <string name="volume_force_stop">音量超阈值强制停止所有应用</string>
     <string name="volume_force_stop_tip">当音量超过防护阈值时，立即强制停止所有第三方应用</string>
+    <string name="volume_key_force_stop">按十下音量-触发强制停止所有应用</string>
+    <string name="volume_key_force_stop_tip">连续按音量下键10次（3秒内）触发强制停止所有第三方应用（通过无障碍按键识别）</string>
+    <string name="volume_press_count">音量键 %1$d/10</string>
+    <string name="switch_block_overlay">自动拦截全屏覆盖应用</string>
+    <string name="overlay_blocked">已拦截全屏覆盖应用: %1$s</string>
+    <string name="tip_block_overlay">每3秒检测悬浮窗/无障碍全屏覆盖（面积占比≥90%%），连续2次确认后强制停止并冻结该应用。需 Shizuku，拦截日志见 Android/data/xiaote.AnQuan/files/overlay_block.log</string>
     <string name="custom_virus_label">自定义病毒包名（逗号分隔）：</string>
     <string name="save_virus">保存病毒包名</string>
     <string name="virus_saved">病毒包名已保存</string>

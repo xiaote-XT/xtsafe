@@ -15,7 +15,7 @@ import java.util.Set;
 
 /**
  * 应用列表适配器
- * 提取自 AntiLockService.AppListAdapter
+ * 提取自 XTSafeMainService.AppListAdapter
  */
 public class AppListAdapter extends ArrayAdapter<AppInfo> {
     private final Context context;

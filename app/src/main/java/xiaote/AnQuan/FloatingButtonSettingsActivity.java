@@ -20,6 +20,8 @@ import android.widget.Toast;
 public class FloatingButtonSettingsActivity extends BaseActivity {
 
     private SharedPreferences prefs;
+    /** 强制置顶开关：需要在悬浮按钮开关的回调里同步 UI 状态 */
+    private android.widget.Switch forceSwitch;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,6 +49,36 @@ public class FloatingButtonSettingsActivity extends BaseActivity {
         tip.setGravity(Gravity.CENTER);
         tip.setPadding(0, 0, 0, 20);
         root.addView(tip);
+
+        // 悬浮按钮总开关（默认开）
+        final android.widget.Switch dotSwitch = new android.widget.Switch(this);
+        dotSwitch.setChecked(prefs.getBoolean("dot_enabled", true));
+        dotSwitch.setTextOn(getString(R.string.force_on));
+        dotSwitch.setTextOff(getString(R.string.force_off));
+        dotSwitch.setText(R.string.switch_show_dot);
+        dotSwitch.setTextSize(14);
+        dotSwitch.setTextColor(getTextColor());
+        dotSwitch.setOnCheckedChangeListener(new android.widget.CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(android.widget.CompoundButton buttonView, boolean isChecked) {
+                prefs.edit().putBoolean("dot_enabled", isChecked).apply();
+                // 关掉悬浮按钮时一并关闭强制置顶：置顶依赖悬浮窗与无障碍，关掉后继续跑会干扰触摸
+                if (!isChecked) {
+                    prefs.edit().putBoolean("force_top", false).apply();
+                    if (forceSwitch != null) forceSwitch.setChecked(false);
+                    Toast.makeText(FloatingButtonSettingsActivity.this,
+                            R.string.dot_off_force_top_off, Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+        root.addView(dotSwitch);
+
+        TextView dotTip = new TextView(this);
+        dotTip.setText(R.string.tip_show_dot);
+        dotTip.setTextColor(getHintTextColor());
+        dotTip.setTextSize(11);
+        dotTip.setPadding(dpToPx(12), 4, dpToPx(12), 10);
+        root.addView(dotTip);
 
         // 宽度
         addSeekBarSetting(root, getString(R.string.label_width), "width", 10, 120, prefs.getInt("dot_width", 40), "dp");
@@ -139,7 +171,7 @@ public class FloatingButtonSettingsActivity extends BaseActivity {
         forceLabel.setPadding(0, 20, 0, 8);
         root.addView(forceLabel);
 
-        final android.widget.Switch forceSwitch = new android.widget.Switch(this);
+        forceSwitch = new android.widget.Switch(this);
         forceSwitch.setChecked(prefs.getBoolean("force_top", true));
         forceSwitch.setTextOn(getString(R.string.force_on));
         forceSwitch.setTextOff(getString(R.string.force_off));
@@ -266,6 +298,39 @@ public class FloatingButtonSettingsActivity extends BaseActivity {
         setContentView(scrollView);
         if (Build.VERSION.SDK_INT >= 33) registerBackCallback();
         SwipeBackHelper.attach(this);
+
+        maybeShowModeWarning();
+    }
+
+    /**
+     * 进入本页时，若当前为「最高优先级 / 混合」置顶模式且未勾选不再提示，
+     * 弹窗说明该模式可能导致滑动断触，并提供「切换重启模式 / 关闭弹窗 / 不再提示」。
+     */
+    private void maybeShowModeWarning() {
+        try {
+            if (prefs.getBoolean("force_top_mode_warn_off", false)) return;
+            // 每次进入本页都提示（除非已勾选不再提示）：断触来自重启服务模式，建议切到最高优先级
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle(R.string.mode_warn_title)
+                    .setMessage(R.string.mode_warn_msg)
+                    .setPositiveButton(R.string.switch_restart_mode, new android.content.DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(android.content.DialogInterface dialog, int which) {
+                            prefs.edit().putInt("force_top_mode", 1).apply();
+                            Toast.makeText(FloatingButtonSettingsActivity.this,
+                                    getString(R.string.mode_selected, getString(R.string.mode_priority)),
+                                    Toast.LENGTH_SHORT).show();
+                        }
+                    })
+                    .setNegativeButton(R.string.close_dialog, null)
+                    .setNeutralButton(R.string.no_more_prompt, new android.content.DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(android.content.DialogInterface dialog, int which) {
+                            prefs.edit().putBoolean("force_top_mode_warn_off", true).apply();
+                        }
+                    })
+                    .show();
+        } catch (Exception ignored) {}
     }
 
     private void registerBackCallback() {

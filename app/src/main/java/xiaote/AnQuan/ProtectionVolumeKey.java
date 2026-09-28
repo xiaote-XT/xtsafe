@@ -1,6 +1,6 @@
 package xiaote.AnQuan;
 
-import xiaote.xtui.HintOverlayManager;
+import xiaote.xtui.XtToast;
 
 import android.content.SharedPreferences;
 import android.os.Handler;
@@ -24,19 +24,19 @@ public class ProtectionVolumeKey {
     private final SharedPreferences dotPrefs;
     private final OverlayManager overlayManager;
     private final EmergencyManager emergencyManager;
-    private final HintOverlayManager hintOverlayManager;
+    private final XtToast xtToast;
 
     private int pressCount = 0;
     private long lastPressTime = 0;
 
     public ProtectionVolumeKey(Handler handler, SharedPreferences dotPrefs,
                           OverlayManager overlayManager, EmergencyManager emergencyManager,
-                          HintOverlayManager hintOverlayManager) {
+                          XtToast xtToast) {
         this.handler = handler;
         this.dotPrefs = dotPrefs;
         this.overlayManager = overlayManager;
         this.emergencyManager = emergencyManager;
-        this.hintOverlayManager = hintOverlayManager;
+        this.xtToast = xtToast;
     }
 
     public static int getThreshold() {
@@ -68,8 +68,8 @@ public class ProtectionVolumeKey {
 
         // 显示当前连按次数：用无障碍悬浮窗而非 Toast（Toast 在本服务/后台易被系统拦截）
         final int current = pressCount;
-        if (hintOverlayManager != null) {
-            hintOverlayManager.showCounter(R.string.volume_press_count, 1500L, current);
+        if (xtToast != null) {
+            xtToast.showPill(R.string.volume_press_count, 1500L, current);
         }
 
         if (pressCount >= PRESS_THRESHOLD) {

@@ -243,10 +243,14 @@ public class OverlayDetector {
         return list;
     }
 
-    /** 是否排除（系统、本应用、非第三方应用） */
+    /** 是否排除（用户白名单、系统、本应用、非第三方应用） */
     private boolean isExcluded(String pkg) {
         if (pkg == null || pkg.isEmpty()) return true;
         if (pkg.equals(context.getPackageName())) return true;
+        // 用户白名单：不参与全屏覆盖拦截
+        try {
+            if (WhitelistPackages.isWhitelisted(context, pkg)) return true;
+        } catch (Throwable ignored) {}
         for (String p : EXCLUDE_PREFIX) {
             if (pkg.equals(p) || pkg.startsWith(p + ".")) return true;
         }

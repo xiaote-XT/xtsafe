@@ -44,6 +44,22 @@ public class App extends Application {
         super.onCreate();
         instance = this;
         sContext = this;
+        // 进程级 hidden API 豁免。
+        // 星特安全 targetSdk 36，反射 android.app.admin.IDevicePolicyManager$Stub
+        // 这类隐藏类及其字段会命中 Android 9+ 的 hidden API 黑名单，
+        // 读取 TRANSACTION_xxx 码值一律被拒，表现为「当前系统未暴露
+        // setUninstallBlocked 接口」。必须在任何被拦反射之前执行。
+        try {
+            xiaote.dhizukutool.DhizukuDpm.ensureHiddenApiExempt();
+        } catch (Throwable ignored) {}
+        // 早期加载完整扫描规则。
+        // 规则数组原本只在 SecurityScanActivity.onCreate 里填充，安装广播
+        // （InstallScanReceiver）在本进程首次启动时就会触发扫描，此时 Activity
+        // 从未创建，permissionRules/classRules/fileRules 等全是空数组，
+        // 导致 JSON 里绝大部分检测规则失效。这里提前加载后所有路径都拿得到。
+        try {
+            SecurityScanActivity.ensureRulesLoaded(this);
+        } catch (Throwable ignored) {}
         loadVirusPackages();
         registerInstallScanReceiver();
         loadSensitivePackages();

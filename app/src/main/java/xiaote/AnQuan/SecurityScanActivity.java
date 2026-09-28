@@ -3,6 +3,7 @@ package xiaote.AnQuan;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ContentResolver;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
@@ -89,8 +90,9 @@ public class SecurityScanActivity extends Activity {
         adapter = new AppAdapter(this, appList);
         appListView.setAdapter(adapter);
 
-        // 初始化规则（从 JSON 加载）
-        initRules();
+        // 初始化规则（从 JSON 加载）。走 ensureRulesLoaded：
+        // 若 App.onCreate 已经加载过则跳过，避免重复解析三源 JSON。
+        ensureRulesLoaded(this);
         
 
         // 处理来自分享/打开的文件
@@ -224,40 +226,50 @@ public class SecurityScanActivity extends Activity {
     private String getAppNameFromApk(String apkPath) {
         try {
             PackageInfo pi = pm.getPackageArchiveInfo(apkPath, 0);
-            if (pi != null && pi.applicationInfo != null) {
-                return pm.getApplicationLabel(pi.applicationInfo).toString();
-            }
+            String label = getLabelFromArchive(pm, pi, apkPath);
+            if (!label.isEmpty()) return label;
         } catch (Exception e) {}
         return null;
     }
 
+    /**
+     * 从未安装的 APK 里取应用名。
+     *
+     * 关键点：getPackageArchiveInfo 返回的 applicationInfo 没有 sourceDir /
+     * publicSourceDir，PackageManager 解析不到资源表，getApplicationLabel 会
+     * 抛异常或直接返回包名。必须先把这两个字段补成 apkPath，再取 label。
+     *
+     * 取到的仍是包名时视为失败，返回空串让调用方回退。
+     *
+     * @return 应用名；取不到返回空串（不是 null）
+     */
+    public static String getLabelFromArchive(PackageManager pm, PackageInfo pi, String apkPath) {
+        if (pm == null || pi == null || pi.applicationInfo == null) return "";
+        try {
+            ApplicationInfo ai = pi.applicationInfo;
+            if (ai.sourceDir == null) ai.sourceDir = apkPath;
+            if (ai.publicSourceDir == null) ai.publicSourceDir = apkPath;
+            CharSequence label = pm.getApplicationLabel(ai);
+            if (label != null && label.length() > 0) {
+                String s = label.toString();
+                if (!s.equals(pi.packageName)) return s;
+            }
+        } catch (Throwable ignored) {}
+        return "";
+    }
+
+    /**
+     * 取综合风险等级。
+     *
+     * 直接采用扫描过程中各检测点写入的 result.maxRiskLevel：
+     *   · 风险签名、名称/包名仿冒（如"我的世界"非官方包名）写 RISK_EXTREME
+     *   · 类名规则、权限组合、DEX 字符串特征、跨字符串话术各写自己的 riskLevel
+     * 之前这里拿描述去 CLASS_RULES 里反查等级，导致跨字符串话术（描述不在
+     * CLASS_RULES 中）和 specialWarning 类命中被算成 0 分，列表显示"安全"。
+     */
     private int computeRiskLevel(ScanResult result) {
-        // 高风险签名直接极高
-        if (result.riskSignatures != null && !result.riskSignatures.isEmpty()) {
-            return RISK_EXTREME;
-        }
-        if (result.combinations.isEmpty() && result.riskClasses.isEmpty() && result.fileWarnings.isEmpty()) return 0;
-        int max = 0;
-        for (String comb : result.combinations) {
-            for (PermissionRule rule : PERMISSION_RULES) {
-                if (rule.description.equals(comb)) {
-                    if (rule.riskLevel > max) max = rule.riskLevel;
-                    break;
-                }
-            }
-        }
-        for (String cls : result.riskClasses) {
-            for (RiskClassRule rule : CLASS_RULES) {
-                if (rule.description.equals(cls) && rule.riskLevel > max) max = rule.riskLevel;
-            }
-        }
-        // stringFeatures 命中的特征计入风险等级（通过 combinations 传递描述，匹配规则）
-        for (String comb : result.combinations) {
-            for (StringFeatureRule rule : STRING_FEATURE_RULES) {
-                if (rule.description.equals(comb) && rule.riskLevel > max) max = rule.riskLevel;
-            }
-        }
-        return max;
+        if (result == null) return 0;
+        return result.maxRiskLevel;
     }
 
     private String riskText(int risk) {
@@ -500,6 +512,49 @@ public class SecurityScanActivity extends Activity {
         };
     }
 
+    /**
+     * 跨字符串组合话术规则。
+     *
+     * 判定：组内每个词只要在 DEX 字符串池中任意位置出现即命中——
+     * 不要求连续、不要求顺序、不要求出现在同一条字符串里。
+     * 木马常把话术拆成多条字符串常量，或在同一条字符串里插换行、零宽字符，
+     * 因此这里先在整池字符串上归一化（去空白与零宽字符）再逐词判断。
+     *
+     * 应用名（如"我的世界"）是变量，不写进规则；靠话术框架词识别。
+     */
+    private static PhraseGroupRule[] PHRASE_GROUP_RULES = defaultPhraseGroupRules();
+
+    /** 默认内置跨字符串组合话术规则 */
+    private static PhraseGroupRule[] defaultPhraseGroupRules() {
+        return new PhraseGroupRule[]{
+                new PhraseGroupRule(new String[]{"温馨提醒", "大陆网络", "权限"},
+                        "疑似仿冒应用诱导开启无障碍权限（温馨提醒/大陆网络/权限）", 4),
+                new PhraseGroupRule(new String[]{"温馨提醒", "受限制", "开启"},
+                        "疑似仿冒应用诱导开启无障碍权限（温馨提醒/受限制/开启）", 4),
+                new PhraseGroupRule(new String[]{"使用步骤", "已下载服务", "开始使用"},
+                        "疑似仿冒应用诱导开启无障碍权限（使用步骤/已下载服务/开始使用）", 4),
+                new PhraseGroupRule(new String[]{"使用步骤", "打开已下载", "开始使用"},
+                        "疑似仿冒应用诱导开启无障碍权限（使用步骤/打开已下载/开始使用）", 4),
+                new PhraseGroupRule(new String[]{"已下载服务", "开始使用", "加载"},
+                        "疑似仿冒应用诱导开启无障碍权限（已下载服务/开始使用/加载）", 4),
+                new PhraseGroupRule(new String[]{"打开已下载", "开始使用", "加载"},
+                        "疑似仿冒应用诱导开启无障碍权限（打开已下载/开始使用/加载）", 4)
+        };
+    }
+
+    /** 跨字符串组合话术规则：组内所有词都出现即命中，不要求连续或相邻 */
+    private static class PhraseGroupRule {
+        String[] keywords;
+        String description;
+        int riskLevel;
+
+        PhraseGroupRule(String[] keywords, String description, int riskLevel) {
+            this.keywords = keywords;
+            this.description = description;
+            this.riskLevel = riskLevel;
+        }
+    }
+
     /** DEX 字符串特征规则：任一关键词命中即计入特征，支持风险等级 */
     private static class StringFeatureRule {
         String[] keywords;
@@ -599,23 +654,42 @@ public class SecurityScanActivity extends Activity {
     }
 
     /**
-     * 类名匹配：同时支持
-     *   1. 点号格式子串：com.a.b.C（反射/字符串常量中常见）
-     *   2. DEX 描述符格式：Lcom/a/b/C;（标准类描述符）
-     *   3. 斜杠格式：com/a/b/C（部分工具输出）
-     * 并增加边界判断，避免 com.tencent.a 误中 com.tencent.abc
+     * 类名匹配。
+     *
+     * 关键修正：DEX 里的类以描述符形式存放（Lcom/xunxing/toolbox/shell/MainActivity;），
+     * 旧实现直接用斜杠形式在整串里做子串匹配时，左边界是 'L'（字母），
+     * 被 containsWithBoundary 判成「不合法边界」而漏掉。
+     *
+     * 现在的做法：
+     *   1. 把规则归一化成斜杠形式与点号形式（去掉可能的 L...; 外壳）；
+     *   2. 先用原始 dexString 做一次匹配（覆盖字符串常量场景）；
+     *   3. 若 dexString 是 L...; 描述符，剥离外壳后再做一次匹配。
+     * 边界判断保留：规则前后不能紧邻字母/数字/_/$/.，
+     * 避免 com.tencent.a 误中 com.tencent.abc；斜杠 / 视为合法边界。
      */
     private static boolean matchClassName(String dexString, String ruleClass) {
-       if (dexString == null || ruleClass == null || ruleClass.isEmpty()) return false;
-    // 1. 点号格式：直接子串匹配 + 边界校验
-       if (containsWithBoundary(dexString, ruleClass)) return true;
-    // 2. 描述符格式：Lcom/a/b/C;
-        String desc = toDescriptor(ruleClass);
-        if (desc != null && dexString.contains(desc)) return true;
-     // 3. 斜杠格式：com/a/b/C
-        String slashName = ruleClass.replace('.', '/');
-        if (!slashName.equals(ruleClass) && containsWithBoundary(dexString, slashName)) return true;
-     // 删除第4条短类名匹配
+        if (dexString == null || ruleClass == null) return false;
+        String rule = ruleClass.trim();
+        if (rule.isEmpty()) return false;
+
+        // 归一化规则：斜杠形式（去 L...; 外壳）与点号形式
+        String ruleSlash = rule.replace('.', '/');
+        if (ruleSlash.startsWith("L") && ruleSlash.endsWith(";") && ruleSlash.length() > 2) {
+            ruleSlash = ruleSlash.substring(1, ruleSlash.length() - 1);
+        }
+        String ruleDot = ruleSlash.replace('/', '.');
+
+        // 候选 1：原始字符串（字符串常量场景，如 "com.xunxing.xxx.MainActivity"）
+        if (containsWithBoundary(dexString, rule)) return true;
+        if (!ruleSlash.equals(rule) && containsWithBoundary(dexString, ruleSlash)) return true;
+        if (!ruleDot.equals(rule) && containsWithBoundary(dexString, ruleDot)) return true;
+
+        // 候选 2：描述符 L...;，剥离外壳后再匹配斜杠/点号形式
+        if (dexString.length() >= 2 && dexString.charAt(0) == 'L' && dexString.endsWith(";")) {
+            String inner = dexString.substring(1, dexString.length() - 1);
+            if (containsWithBoundary(inner, ruleSlash)) return true;
+            if (!ruleDot.equals(ruleSlash) && containsWithBoundary(inner, ruleDot)) return true;
+        }
         return false;
     }
 
@@ -643,24 +717,46 @@ public class SecurityScanActivity extends Activity {
         return false;
     }
 
-    // 计算 APK 签名 MD5
+    /**
+     * 计算 APK 签名 MD5。
+     *
+     * Android 14（API 34）起对 targetSdk 34+ 的应用强制走 GET_SIGNING_CERTIFICATES，
+     * GET_SIGNATURES 会返回 null，导致签名检测静默失效（白名单签名比对、
+     * 风险签名比对全部跳过）。这里按版本分支：API 28+ 优先用 signingInfo，
+     * 拿不到再回退旧 API。
+     */
     public static String getSignatureMd5(PackageManager pm, String apkPath) {
         try {
-            PackageInfo pi = pm.getPackageArchiveInfo(apkPath, PackageManager.GET_SIGNATURES);
-            if (pi != null && pi.signatures != null && pi.signatures.length > 0) {
-                byte[] cert = pi.signatures[0].toByteArray();
-                java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
-                byte[] digest = md.digest(cert);
-                StringBuilder sb = new StringBuilder();
-                for (byte b : digest) {
-                    sb.append(String.format("%02x", b & 0xFF));
-                }
-                return sb.toString();
+            byte[] cert = null;
+            if (android.os.Build.VERSION.SDK_INT >= 28) {
+                try {
+                    PackageInfo pi = pm.getPackageArchiveInfo(apkPath,
+                            PackageManager.GET_SIGNING_CERTIFICATES);
+                    if (pi != null && pi.signingInfo != null) {
+                        android.content.pm.Signature[] sigs = pi.signingInfo.hasMultipleSigners()
+                                ? pi.signingInfo.getApkContentsSigners()
+                                : pi.signingInfo.getSigningCertificateHistory();
+                        if (sigs != null && sigs.length > 0) cert = sigs[0].toByteArray();
+                    }
+                } catch (Throwable ignored) {}
             }
+            if (cert == null) {
+                PackageInfo pi = pm.getPackageArchiveInfo(apkPath, PackageManager.GET_SIGNATURES);
+                if (pi != null && pi.signatures != null && pi.signatures.length > 0) {
+                    cert = pi.signatures[0].toByteArray();
+                }
+            }
+            if (cert == null) return "";
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+            byte[] digest = md.digest(cert);
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b & 0xFF));
+            }
+            return sb.toString();
         } catch (Exception e) {
-            // ignore
+            return "";
         }
-        return "";
     }
 
     // 签名是否命中风险列表
@@ -691,7 +787,9 @@ public class SecurityScanActivity extends Activity {
             result = scanApk(pm, apkPath, perms);
             // 检查病毒包名
             if (pi != null && pi.packageName != null) {
-                for (String virusPkg : VirusPackages.BUILTIN) {
+                // 用 getVirusPackages 而非 BUILTIN：前者含用户在"主动防护"里加的自定义病毒包名，
+                // 后者只有内置列表，会漏掉自定义项。
+                for (String virusPkg : VirusPackages.getVirusPackages(App.getContext())) {
                     if (virusPkg.equals(pi.packageName)) {
                         result.malwareConfirmed = true;
                         result.riskSignatures.add("命中病毒包名: " + pi.packageName);
@@ -862,14 +960,45 @@ public class SecurityScanActivity extends Activity {
     public static ScanResult scanApk(PackageManager pm, String apkPath, Set<String> declaredPermissions) {
         ScanResult result = new ScanResult();
         result.scanLogs.add("开始扫描: " + apkPath);
-        result.scanLogs.add("实际声明权限: " + declaredPermissions.size() + "个");
         if (declaredPermissions != null) {
             result.permissions.addAll(declaredPermissions);
         }
+        result.scanLogs.add("实际声明权限: " + result.permissions.size() + "个");
+        // 规则自检：若这里显示 0，说明规则未加载，所有规则类检测都会失效
+        result.scanLogs.add("已加载规则: 类名" + CLASS_RULES.length
+                + " 权限组合" + PERMISSION_RULES.length
+                + " 文件" + FILE_RULES.length
+                + " 字符串特征" + STRING_FEATURE_RULES.length
+                + " 话术" + PHRASE_GROUP_RULES.length
+                + " 方法级API" + CONFIRMED_API_RULES.length);
         File apkFile = new File(apkPath);
         if (!apkFile.exists()) {
             result.scanLogs.add("文件不存在: " + apkPath);
             return result;
+        }
+
+        // 先取包名与应用名，供白名单与后续规则使用
+        String pkgName = "";
+        String appName = "";
+        try {
+            PackageInfo pi = pm.getPackageArchiveInfo(apkPath, 0);
+            if (pi != null) {
+                pkgName = pi.packageName != null ? pi.packageName : "";
+                appName = getLabelFromArchive(pm, pi, apkPath);
+            }
+        } catch (Exception e) {}
+
+        // 用户白名单：只看包名，命中即整体跳过扫描。
+        // 必须放在签名检测之前——否则风险签名会先写进 riskSignatures，
+        // 调用方 computeRiskLevel 见到 riskSignatures 非空直接判极高风险，
+        // 白名单等于失效。
+        if (!pkgName.isEmpty()) {
+            try {
+                if (WhitelistPackages.isWhitelisted(App.getContext(), pkgName)) {
+                    result.scanLogs.add("命中用户白名单，跳过扫描: " + pkgName);
+                    return result;
+                }
+            } catch (Throwable ignored) {}
         }
 
         // 签名 MD5 检测
@@ -886,19 +1015,6 @@ public class SecurityScanActivity extends Activity {
             result.scanLogs.add("签名检测失败: " + e.getMessage());
         }
 
-        // 白名单检查：包名 + 签名MD5 完全匹配则跳过扫描
-        String pkgName = "";
-        String appName = "";
-        try {
-            PackageInfo pi = pm.getPackageArchiveInfo(apkPath, 0);
-            if (pi != null) {
-                pkgName = pi.packageName != null ? pi.packageName : "";
-                if (pi.applicationInfo != null) {
-                    CharSequence label = pm.getApplicationLabel(pi.applicationInfo);
-                    if (label != null) appName = label.toString();
-                }
-            }
-        } catch (Exception e) {}
         if (!pkgName.isEmpty() && !sigMd5.isEmpty()) {
             for (String[] entry : WHITELIST) {
                 if (entry.length >= 2 && pkgName.equals(entry[0])) {
@@ -956,6 +1072,7 @@ public class SecurityScanActivity extends Activity {
                     if (dexBytes.length == 0) continue;
                     try {
                         DexBackedDexFile dexFile = new DexBackedDexFile(Opcodes.getDefault(), dexBytes);
+                        // 第一遍：字符串池。用于字符串常量类检测（如反射引用的类名）。
                         for (String s : dexFile.getStringSection()) {
                             // 敏感字符串特征匹配（规则由 scan_rules.json 的 stringFeatures 配置）
                             for (StringFeatureRule sfr : STRING_FEATURE_RULES) {
@@ -969,17 +1086,39 @@ public class SecurityScanActivity extends Activity {
                                     result.detailedInfo.add("DEX: " + entryName + ", 命中特征: " + s);
                                 }
                             }
-                            // 类名匹配（支持点号/描述符/斜杠三种格式 + 边界判断）
+                            // 类名匹配（字符串池中可能出现 com.a.b.C 形式的常量）
                             for (RiskClassRule rule : CLASS_RULES) {
                                 if (matchClassName(s, rule.className)) {
                                     if (!result.riskClasses.contains(rule.description)) {
                                         result.riskClasses.add(rule.description);
                                     }
                                     result.maxRiskLevel = Math.max(result.maxRiskLevel, rule.riskLevel);
-                                    result.detailedInfo.add("DEX: " + entryName + ", 类名匹配: " + rule.className + " -> " + rule.description);
+                                    result.detailedInfo.add("DEX: " + entryName + ", 类名匹配(字符串池): " + rule.className + " -> " + rule.description);
                                 }
                             }
                         }
+
+                        // 第二遍：类定义表。这是权威来源。
+                        // DEX 中每个类以描述符 Lcom/x/y/Z; 形式存放在 class_defs，
+                        // 不依赖字符串池是否被裁剪/加固。只遍历类定义表即可覆盖
+                        // 所有实际存在于 APK 中的类，避免仅靠字符串池造成的漏报。
+                        try {
+                            for (org.jf.dexlib2.iface.ClassDef classDef : dexFile.getClasses()) {
+                                String type = classDef.getType();
+                                if (type == null || type.isEmpty()) continue;
+                                for (RiskClassRule rule : CLASS_RULES) {
+                                    if (matchClassName(type, rule.className)) {
+                                        if (!result.riskClasses.contains(rule.description)) {
+                                            result.riskClasses.add(rule.description);
+                                        }
+                                        result.maxRiskLevel = Math.max(result.maxRiskLevel, rule.riskLevel);
+                                        result.detailedInfo.add("DEX: " + entryName + ", 类名匹配(类定义表): " + rule.className + " -> " + rule.description);
+                                    }
+                                }
+                            }
+                        } catch (Throwable ignored) {}
+                        // 跨字符串组合话术：组内所有词在整池字符串中出现即命中
+                        scanPhraseGroups(dexFile, result, entryName);
                         // 轻量级方法调用级检查：确认关键敏感API是否真实被调用（降低关键词误报）
                         scanConfirmedCalls(dexFile, result, entryName);
                     } catch (Exception e) {
@@ -1006,6 +1145,56 @@ public class SecurityScanActivity extends Activity {
 
         result.scanLogs.add("扫描完成: 权限" + result.permissions.size() + "个, 组合" + result.combinations.size() + "个, 类名" + result.riskClasses.size() + "个, 文件" + result.fileWarnings.size() + "个");
         return result;
+    }
+
+    /**
+     * 跨字符串组合话术检测。
+     *
+     * 把整个 DEX 字符串池归一化（去空白与零宽字符）后拼成一整段文本，
+     * 再对每条分组规则逐词判断：组内所有词都出现即命中。
+     * 不要求连续、不要求顺序、不要求出现在同一条字符串里——
+     * 这正是为了对抗木马把话术拆成多条字符串常量、或在同一条里插换行的绕过手法。
+     * 应用名（如"我的世界"）是变量，不写进规则；靠话术框架词识别。
+     */
+    private static void scanPhraseGroups(DexBackedDexFile dexFile, ScanResult result, String dexName) {
+        if (dexFile == null || result == null) return;
+        if (PHRASE_GROUP_RULES == null || PHRASE_GROUP_RULES.length == 0) return;
+        try {
+            StringBuilder sb = new StringBuilder();
+            for (String s : dexFile.getStringSection()) {
+                if (s == null || s.isEmpty()) continue;
+                sb.append(s).append('\n');
+            }
+            if (sb.length() == 0) return;
+            String pool = normalizeForPhrase(sb.toString());
+            if (pool.isEmpty()) return;
+            for (PhraseGroupRule rule : PHRASE_GROUP_RULES) {
+                if (rule == null || rule.keywords == null || rule.keywords.length == 0) continue;
+                boolean all = true;
+                for (String kw : rule.keywords) {
+                    if (kw == null || !pool.contains(kw)) { all = false; break; }
+                }
+                if (!all) continue;
+                if (!result.riskClasses.contains(rule.description)) {
+                    result.riskClasses.add(rule.description);
+                }
+                result.maxRiskLevel = Math.max(result.maxRiskLevel, rule.riskLevel);
+                result.detailedInfo.add("DEX: " + dexName + ", 跨字符串话术命中: " + rule.description);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    /**
+     * 话术匹配前的归一化：去掉所有空白（含全角空格）与常见零宽 / 不可见字符。
+     * 木马常在关键词之间插换行或零宽字符让字符串匹配失败，这里统一清掉。
+     */
+    private static String normalizeForPhrase(String s) {
+        if (s == null) return "";
+        String t = s.replaceAll("\\s+", "");
+        t = t.replace("\u200B", "").replace("\u200C", "").replace("\u200D", "")
+                .replace("\u200E", "").replace("\u200F", "").replace("\uFEFF", "")
+                .replace("\u2060", "").replace("\u00A0", "").replace("\u3000", "");
+        return t;
     }
 
     /**
@@ -1083,8 +1272,23 @@ public class SecurityScanActivity extends Activity {
         List<String> errors = new ArrayList<String>();
         List<String> detailedInfo = new ArrayList<String>(); // 详细信息
 
+        /**
+         * 是否“未扫描/无任何发现”。
+         *
+         * 必须把所有可能产生结论的字段都算进来，否则仅命中风险签名、
+         * 仅命中方法级敏感 API、仅命中名称/包名仿冒（specialWarning）
+         * 或已确认恶意（malwareConfirmed）时会被判成“未扫描”，
+         * 列表点击直接弹“是否立即扫描”而不是展示结果。
+         */
         boolean isEmpty() {
-            return combinations.isEmpty() && riskClasses.isEmpty() && fileWarnings.isEmpty() && errors.isEmpty();
+            return !malwareConfirmed
+                    && combinations.isEmpty()
+                    && riskClasses.isEmpty()
+                    && fileWarnings.isEmpty()
+                    && errors.isEmpty()
+                    && riskSignatures.isEmpty()
+                    && confirmedCalls.isEmpty()
+                    && (specialWarning == null || specialWarning.isEmpty());
         }
 
         String toDetail() {
@@ -1267,10 +1471,13 @@ public class SecurityScanActivity extends Activity {
                 scanResult.scanLogs.add(0, "应用: " + app.appName + " (" + app.packageName + ")");
                 scanResult.scanLogs.add("风险等级: " + activity.riskText(app.riskLevel));
                 scanResult.scanLogs.add("耗时: " + elapsed + "ms");
-                // 检查是否在病毒包名列表中
-                for (String virusPkg : VirusPackages.BUILTIN) {
+                // 检查是否在病毒包名列表中。
+                // 用 getVirusPackages 含用户自定义项；BUILTIN 只有内置列表会漏。
+                for (String virusPkg : VirusPackages.getVirusPackages(App.getContext())) {
                     if (virusPkg.equals(app.packageName)) {
                         scanResult.malwareConfirmed = true;
+                        scanResult.riskSignatures.add("命中病毒包名: " + app.packageName);
+                        scanResult.maxRiskLevel = Math.max(scanResult.maxRiskLevel, RISK_EXTREME);
                         break;
                     }
                 }
@@ -1352,26 +1559,26 @@ public class SecurityScanActivity extends Activity {
                                 perms.add(p.replace("android.permission.", ""));
                             }
                         }
-                        if (pkgInfo.applicationInfo != null) {
-                            try {
-                                String label = activity.pm.getApplicationLabel(pkgInfo.applicationInfo).toString();
-                                if (label != null && !label.isEmpty()) {
-                                    fileName = label;
-                                }
-                            } catch (Exception e) {}
-                        }
+                        // 用 getLabelFromArchive 取应用名：
+                        // getPackageArchiveInfo 返回的 applicationInfo 缺 sourceDir，
+                        // 直接调 getApplicationLabel 拿不到资源表，只会返回包名或抛异常。
+                        String label = getLabelFromArchive(activity.pm, pkgInfo,
+                                apkFile.getAbsolutePath());
+                        if (!label.isEmpty()) fileName = label;
                     }
                 } catch (Exception e) {
                     perms.clear();
                 }
                 ScanResult result = scanApk(activity.pm, apkFile.getAbsolutePath(), perms);
-                // 检查病毒列表
+                // 检查病毒列表。用 getVirusPackages 含用户自定义项，BUILTIN 只有内置列表会漏。
                 try {
                     if (!pkgName.isEmpty()) {
                         result.scanLogs.add("包名: " + pkgName);
-                        for (String virusPkg : VirusPackages.BUILTIN) {
+                        for (String virusPkg : VirusPackages.getVirusPackages(App.getContext())) {
                             if (virusPkg.equals(pkgName)) {
                                 result.malwareConfirmed = true;
+                                result.riskSignatures.add("命中病毒包名: " + pkgName);
+                                result.maxRiskLevel = Math.max(result.maxRiskLevel, RISK_EXTREME);
                                 result.scanLogs.add("匹配病毒包名: " + pkgName);
                                 break;
                             }
@@ -1448,10 +1655,13 @@ public class SecurityScanActivity extends Activity {
                     }
                 } catch (Exception e) {}
                 ScanResult result = scanApk(activity.pm, appInfo.sourceDir, perms);
+                // 用 getVirusPackages 含用户自定义项；BUILTIN 只有内置列表会漏。
                 try {
-                    for (String virusPkg : VirusPackages.BUILTIN) {
+                    for (String virusPkg : VirusPackages.getVirusPackages(App.getContext())) {
                         if (virusPkg.equals(appInfo.packageName)) {
                             result.malwareConfirmed = true;
+                            result.riskSignatures.add("命中病毒包名: " + appInfo.packageName);
+                            result.maxRiskLevel = Math.max(result.maxRiskLevel, RISK_EXTREME);
                             result.scanLogs.add("匹配病毒包名: " + appInfo.packageName);
                             break;
                         }
@@ -1516,7 +1726,33 @@ public class SecurityScanActivity extends Activity {
      *   2. 云端规则：filesDir/scan_rules_cloud.json（可删除）
      *   3. 导入规则：filesDir/scan_rules_imported.json（可删除）
      */
-    private void initRules() {
+    /** 规则是否已加载。避免重复解析，也供 App 早期调用后跳过。 */
+    private static volatile boolean sRulesLoaded = false;
+
+    /**
+     * 确保规则已加载。供 App.onCreate 早期调用。
+     *
+     * 为什么必须这样做：
+     *   PERMISSION_RULES / CLASS_RULES / FILE_RULES / WHITELIST /
+     *   NAME_PACKAGE_RULES / STRING_FEATURE_RULES / PHRASE_GROUP_RULES /
+     *   CONFIRMED_API_RULES 这些数组原本只在 SecurityScanActivity.onCreate
+     *   里填充。安装广播（InstallScanReceiver）可能在本进程首次启动时直接
+     *   触发扫描，此时 Activity 从未创建，上述数组全是空数组，导致 JSON 里
+     *   的权限组合、类名规则、文件规则、名称仿冒规则全部失效。
+     *
+     *   App.onCreate 里调用本方法后，任何扫描路径拿到的都是完整规则。
+     */
+    public static void ensureRulesLoaded(Context ctx) {
+        if (sRulesLoaded) return;
+        initRules(ctx);
+    }
+
+    /**
+     * 加载三源规则。静态方法，接收 Context，可被 App 或 Activity 调用。
+     */
+    public static void initRules(Context ctx) {
+        if (ctx == null) return;
+        sRulesLoaded = true;
         // 先重置为默认值（避免上次残留）
         RISK_SIGNATURES = new String[]{
             "5b1d20e8804cea1b0ab21ded391d9e8e",
@@ -1532,11 +1768,12 @@ public class SecurityScanActivity extends Activity {
         WHITELIST = new String[0][0];
         NAME_PACKAGE_RULES = defaultNamePackageRules();
         STRING_FEATURE_RULES = defaultStringFeatureRules();
+        PHRASE_GROUP_RULES = defaultPhraseGroupRules();
         CONFIRMED_API_RULES = defaultConfirmedApiRules();
 
         // 1. 加载内置规则（base）
         try {
-            InputStream is = getAssets().open("scan_rules.json");
+            InputStream is = ctx.getAssets().open("scan_rules.json");
             BufferedReader reader = new BufferedReader(new InputStreamReader(is, "UTF-8"));
             StringBuilder sb = new StringBuilder();
             String line;
@@ -1552,7 +1789,7 @@ public class SecurityScanActivity extends Activity {
 
         // 2. 加载云端规则（覆盖内置）
         try {
-            File cloudFile = new File(getFilesDir(), "scan_rules_cloud.json");
+            File cloudFile = new File(ctx.getFilesDir(), "scan_rules_cloud.json");
             if (cloudFile.exists()) {
                 FileInputStream fis = new FileInputStream(cloudFile);
                 BufferedReader reader = new BufferedReader(new InputStreamReader(fis, "UTF-8"));
@@ -1571,7 +1808,7 @@ public class SecurityScanActivity extends Activity {
 
         // 3. 加载导入规则（覆盖内置和云端）
         try {
-            File importFile = new File(getFilesDir(), "scan_rules_imported.json");
+            File importFile = new File(ctx.getFilesDir(), "scan_rules_imported.json");
             if (importFile.exists()) {
                 FileInputStream fis = new FileInputStream(importFile);
                 BufferedReader reader = new BufferedReader(new InputStreamReader(fis, "UTF-8"));
@@ -1590,7 +1827,7 @@ public class SecurityScanActivity extends Activity {
     }
 
     /** 解析规则 JSON 并覆盖当前静态数组 */
-    private void parseRulesJson(String jsonText) {
+    private static void parseRulesJson(String jsonText) {
         try {
             JSONObject root = new JSONObject(jsonText);
 
@@ -1731,6 +1968,26 @@ public class SecurityScanActivity extends Activity {
                 }
                 if (!list.isEmpty()) {
                     STRING_FEATURE_RULES = list.toArray(new StringFeatureRule[0]);
+                }
+            }
+
+            // 加载跨字符串组合话术规则（可选；不配置则沿用 Java 内置的 6 组）
+            JSONArray phraseRules = root.optJSONArray("phraseGroups");
+            if (phraseRules != null && phraseRules.length() > 0) {
+                List<PhraseGroupRule> list = new ArrayList<>();
+                for (int i = 0; i < phraseRules.length(); i++) {
+                    JSONObject obj = phraseRules.optJSONObject(i);
+                    if (obj == null) continue;
+                    JSONArray kws = obj.optJSONArray("keywords");
+                    String desc = obj.optString("description", "");
+                    int risk = obj.optInt("riskLevel", 4);
+                    if (kws == null || kws.length() < 2 || desc.isEmpty()) continue;
+                    String[] arr = new String[kws.length()];
+                    for (int j = 0; j < kws.length(); j++) arr[j] = kws.getString(j);
+                    list.add(new PhraseGroupRule(arr, desc, risk));
+                }
+                if (!list.isEmpty()) {
+                    PHRASE_GROUP_RULES = list.toArray(new PhraseGroupRule[0]);
                 }
             }
 

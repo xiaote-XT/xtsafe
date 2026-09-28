@@ -6,6 +6,8 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.widget.ScrollView;
@@ -13,7 +15,10 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 /**
- * 显示安装检测结果的 Dialog，点击通知后弹出
+ * 显示安装检测结果的 Dialog，点击通知后弹出。
+ *
+ * 标题与内容顶部优先显示应用名：通知里只带了包名，这里用 PackageManager
+ * 反查应用名，查不到时退回显示包名。
  */
 public class ScanResultDialogActivity extends Activity {
 
@@ -28,11 +33,31 @@ public class ScanResultDialogActivity extends Activity {
         final String summary = intent.getStringExtra("summary");
         final String detail = intent.getStringExtra("detail");
 
-        String title = getString(R.string.scan_result_title);
+        // 反查应用名，拿不到就退回包名。
+        // 匿名内部类（setButton 回调）里要捕获 appName，
+        // 所以先用临时变量做可变的空值兜底，最后再赋给 final 的 appName。
+        String resolvedName = null;
         if (packageName != null && !packageName.isEmpty()) {
-            title = getString(R.string.scan_result_title_pkg, packageName);
+            try {
+                PackageManager pm = getPackageManager();
+                ApplicationInfo ai = pm.getApplicationInfo(packageName, 0);
+                resolvedName = pm.getApplicationLabel(ai).toString();
+            } catch (Exception ignored) {}
         }
-        final String content = summary != null ? summary : getString(R.string.no_result);
+        if (resolvedName == null || resolvedName.isEmpty()) resolvedName = packageName;
+        final String appName = resolvedName;
+
+        String title = getString(R.string.scan_result_title);
+        if (appName != null && !appName.isEmpty()) {
+            title = getString(R.string.scan_result_title_pkg, appName);
+        }
+
+        String body = summary != null ? summary : getString(R.string.no_result);
+        // 内容顶部补上应用名与包名
+        StringBuilder head = new StringBuilder();
+        if (appName != null && !appName.isEmpty()) head.append("应用: ").append(appName).append('\n');
+        if (packageName != null && !packageName.isEmpty()) head.append("包名: ").append(packageName).append("\n\n");
+        final String content = head.toString() + body;
 
         // 主框内容：可滚动、可选中复制
         final ScrollView scrollView = new ScrollView(this);
@@ -82,7 +107,7 @@ public class ScanResultDialogActivity extends Activity {
             public void onClick(DialogInterface d, int which) {
                 switchingToDetail = true;
                 d.dismiss();
-                showDetailDialog(packageName, detail != null ? detail : content);
+                showDetailDialog(appName, detail != null ? detail : content);
             }
         });
 
@@ -100,7 +125,7 @@ public class ScanResultDialogActivity extends Activity {
     }
 
     /** 弹出独立的详细信息弹窗 */
-    private void showDetailDialog(String packageName, final String detailText) {
+    private void showDetailDialog(String appName, final String detailText) {
         ScrollView sv = new ScrollView(this);
         TextView tv = new TextView(this);
         tv.setText(detailText);
@@ -111,7 +136,7 @@ public class ScanResultDialogActivity extends Activity {
         sv.addView(tv);
 
         AlertDialog detailDialog = new AlertDialog.Builder(this)
-                .setTitle(getString(R.string.detail_title, packageName != null ? packageName : ""))
+                .setTitle(getString(R.string.detail_title, appName != null ? appName : ""))
                 .setView(sv)
                 .setCancelable(true)
                 .create();

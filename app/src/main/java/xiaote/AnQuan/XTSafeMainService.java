@@ -1,6 +1,6 @@
 package xiaote.AnQuan;
 
-import xiaote.xtui.HintOverlayManager;
+import xiaote.xtui.XtToast;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.AccessibilityServiceInfo;
@@ -75,7 +75,7 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
     // 风险文字识别（拆分为 RiskDetector）
     private RiskDetector riskDetector;
     // 统一轻提示浮窗（风险横幅 / 计数提示）
-    private HintOverlayManager hintOverlayManager;
+    private XtToast xtToast;
     // 全屏覆盖检测（悬浮窗/无障碍覆盖型恶意应用）
     private OverlayDetector overlayDetector;
     private volatile boolean overlayScanRunning = false;
@@ -112,10 +112,10 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
         overlayManager = new OverlayManager(this, handler, colorHelper, emergencyManager);
         autoClickHelper = new AutoClickHelper(this, handler);
         virusManager = new VirusManager(this);
-        hintOverlayManager = new HintOverlayManager(this, handler);
-        protectionVolumeKey = new ProtectionVolumeKey(handler, dotPrefs, overlayManager, emergencyManager, hintOverlayManager);
+        xtToast = new XtToast(this, handler);
+        protectionVolumeKey = new ProtectionVolumeKey(handler, dotPrefs, overlayManager, emergencyManager, xtToast);
         protectionVolumeThreshold = new ProtectionVolumeThreshold(this, handler, dotPrefs, overlayManager, emergencyManager);
-        riskDetector = new RiskDetector(this, handler, dotPrefs, overlayManager, hintOverlayManager);
+        riskDetector = new RiskDetector(this, handler, dotPrefs, overlayManager, xtToast);
         overlayDetector = new OverlayDetector(this);
 
         dotPrefs.registerOnSharedPreferenceChangeListener(dotPrefsListener);
@@ -824,7 +824,7 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
         if (protectionVolumeThreshold != null) protectionVolumeThreshold.stop();
         if (broadcastRegistrar != null) broadcastRegistrar.unregisterAll();
         if (smartRecoverManager != null) smartRecoverManager.cleanup();
-        if (hintOverlayManager != null) hintOverlayManager.cleanup();
+        if (xtToast != null) xtToast.cleanup();
         if (handler != null) handler.removeCallbacksAndMessages(null);
         if (overlayManager != null) overlayManager.cleanup();
         try { stopForeground(true); } catch (Exception e) {}

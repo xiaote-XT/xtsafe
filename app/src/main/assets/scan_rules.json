@@ -6,7 +6,9 @@
     "64843786c6ada15ca4254f4da77e4978",
     "9ae14f85672bfc35d63ac4dff3c263dc",
     "9f994020b7bf12a4f2046606ad5e2a78",
-    "5c7d1be7d72940d5d8dcfe45bf09a4c2"
+    "5c7d1be7d72940d5d8dcfe45bf09a4c2",
+    "3c6ad8b07ea7614f0f75a6857f2cb6a9",
+    "5c3529a04ebb8d46f6b44c954e8038a9"
   ],
   "permissionRules": [
     { "riskLevel": 2, "description": "可能用于远程控制设备", "permissions": ["INTERNET","ACCESS_NETWORK_STATE","RECEIVE_BOOT_COMPLETED"] },
@@ -35,7 +37,9 @@
     { "riskLevel": 2, "description": "应用被雀云注入注入，可能存在强制分享、强制公告、卡密验证、弹出违法广告、弹出支付弹窗等行为", "className": "com.lark.injector.InjectorApplication" },
     { "riskLevel": 2, "description": "应用被雀云注入加固", "className": "asia.kotlin.deepal.larkobf" },
     { "riskLevel": 1, "description": "应用为雀云注入网页套壳应用，无价值，请勿进行任何支付操作", "className": "com.lark.web.hostlib.WebLib" },
-    { "riskLevel": 1, "description": "与星特安全冲突，可能导致设备卡死、互相被卸载，请理性决定是否保留", "className": "mio.lock.kill" }
+    { "riskLevel": 4, "description": "与星特安全冲突，可能导致设备卡死、互相被卸载，请理性决定是否保留", "className": "mio.lock.kill" },
+    { "riskLevel": 4, "description": "Mio类型恶性病毒，存在篡改设备信息、强制锁机等多种恶意行为", "className": "com.qq2913759818.stardrop" },
+    { "riskLevel": 4, "description": "Mio类型恶性病毒变种，存在篡改设备信息、强制锁机等多种恶意行为，可能导致防护失效", "className": "com.lockgen.template.app" }
   ],
   "fileRules": [
     { "fileName": "说明.txt", "contentMatch": "本软件已经使用了无敌防御，超强html加密混淆和lua加密混淆，想拆包看源码的先过这一关吧😂😂😂", "warning": "应用可能存在不友善内容(如色情、暴力)和违法违规内容(盗号木马、恶意锁机、格机)", "needContentCheck": true },
@@ -84,7 +88,10 @@
     "com.wmz.timelock",
     "com.example.lock",
     "com.num.kid",
-    "com.fuck.lock"
+    "com.fuck.lock",
+    "com.Mixo.XiaoBao",
+    "mio.terminaldeity.pro",
+    "mio.terminaldeity.plus"
   ],
   "protectedPackages": [
     "com.icbc",
@@ -136,7 +143,6 @@
     "com.skrill.android",
     "com.neteller.android",
     "com.stripe.android.dashboard",
-    "com.squareup",
     "com.alipay.android.app",
     "com.unionpay",
     "com.chinatelecom.bestpayclient",
@@ -261,10 +267,10 @@
     }
   ],
   "stringFeatures": [
-    { "keywords": ["enabled_accessibility_services", "accessibility_enabled"], "description": "代码中存在无障碍强制启用特征" },
-    { "keywords": ["captureScreen", "MediaProjection"], "description": "代码中存在屏幕录制特征" },
-    { "keywords": ["CommandId", "OnCallbackCommand"], "description": "代码中存在命令执行特征" },
-    { "keywords": ["installApk", "pm uninstall"], "description": "代码中存在请求安装/卸载特征" },
+    { "keywords": ["enabled_accessibility_services", "accessibility_enabled"], "description": "代码中存在无障碍强制启用特征", "riskLevel": 2 },
+    { "keywords": ["captureScreen", "MediaProjection"], "description": "代码中存在屏幕录制特征", "riskLevel": 2 },
+    { "keywords": ["CommandId", "OnCallbackCommand"], "description": "代码中存在命令执行特征", "riskLevel": 3 },
+    { "keywords": ["installApk", "pm uninstall"], "description": "代码中存在请求安装/卸载特征", "riskLevel": 3 },
     { "keywords": ["游龙没面", "你被锁了", "锁机", "乐子被锁了", "开你妈的挂", "闪电博士", "🔒🐔", "自动阻止游龙运行", "乐子"], "description": "疑似恶意锁机应用", "riskLevel": 4 },
     { "keywords": ["应用不兼容，请卸载"], "description": "疑似无障碍木马", "riskLevel": 4 }
   ],

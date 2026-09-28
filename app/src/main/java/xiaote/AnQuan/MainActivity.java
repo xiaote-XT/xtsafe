@@ -133,7 +133,19 @@ public class MainActivity extends BaseActivity {
 			}
 		});
 
+        addEntryButton(root, "Dhizuku 增强", new View.OnClickListener() {
+			@Override
+			public void onClick(View v) {
+				startActivity(new Intent(MainActivity.this, DhizukuActivity.class));
+			}
+		});
 
+        addEntryButton(root, "Device Owner增强", new View.OnClickListener() {
+			@Override
+			public void onClick(View v) {
+				startActivity(new Intent(MainActivity.this, DeviceOwnerActivity.class));
+			}
+		});
 
         addEntryButton(root, getString(R.string.btn_accessibility), new View.OnClickListener() {
 			@Override
@@ -170,13 +182,6 @@ public class MainActivity extends BaseActivity {
 				intent.setPackage(getPackageName());
 				sendBroadcast(intent);
 				Toast.makeText(MainActivity.this, R.string.opening_admin_settings, Toast.LENGTH_SHORT).show();
-			}
-		});
-
-        addEntryButton(root, getString(R.string.btn_device_owner), new View.OnClickListener() {
-			@Override
-			public void onClick(View v) {
-				MainActivity.this.setDeviceOwner();
 			}
 		});
 
@@ -224,17 +229,10 @@ public class MainActivity extends BaseActivity {
 			}
 		});
 
-        addEntryButton(root, getString(R.string.btn_managed_list), new View.OnClickListener() {
+        addEntryButton(root, "名单管理", new View.OnClickListener() {
 			@Override
 			public void onClick(View v) {
-				startActivity(new Intent(MainActivity.this, ManagedListActivity.class));
-			}
-		});
-
-        addEntryButton(root, getString(R.string.btn_sensitive_apps), new View.OnClickListener() {
-			@Override
-			public void onClick(View v) {
-				startActivity(new Intent(MainActivity.this, SensitiveAppsActivity.class));
+				startActivity(new Intent(MainActivity.this, ListManagerActivity.class));
 			}
 		});
 
@@ -242,6 +240,20 @@ public class MainActivity extends BaseActivity {
 			@Override
 			public void onClick(View v) {
 				startActivity(new Intent(MainActivity.this, SecurityScanActivity.class));
+			}
+		});
+
+        addEntryButton(root, getString(R.string.btn_killad), new View.OnClickListener() {
+			@Override
+			public void onClick(View v) {
+				startActivity(new Intent(MainActivity.this, xiaote.AnQuan.SmallTool.KillAd.KillAdActivity.class));
+			}
+		});
+
+        addEntryButton(root, getString(R.string.btn_process_manager), new View.OnClickListener() {
+			@Override
+			public void onClick(View v) {
+				startActivity(new Intent(MainActivity.this, xiaote.AnQuan.SmallTool.ProcessManager.ProcessManagerActivity.class));
 			}
 		});
 
@@ -379,6 +391,29 @@ public class MainActivity extends BaseActivity {
 
         // 特殊日子纪念弹窗
         SpecialDayChecker.check(this);
+
+        // 版本号含 test/debug 时提示测试版
+        checkDebugBuild();
+    }
+
+    /**
+     * 版本号包含 test 或 debug（不区分大小写）时，弹窗提示为测试版。
+     * 文案用字面量，避免 AIDE 对新增字符串资源的索引延迟。
+     */
+    private void checkDebugBuild() {
+        try {
+            String v = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+            if (v == null) return;
+            String lower = v.toLowerCase();
+            if (lower.contains("test") || lower.contains("debug")) {
+                new android.app.AlertDialog.Builder(MainActivity.this)
+                        .setTitle("测试版提示")
+                        .setMessage("当前版本为测试版，可能存在不稳定和未知bug")
+                        .setPositiveButton("确定", null)
+                        .setCancelable(true)
+                        .show();
+            }
+        } catch (Exception ignored) {}
     }
 
 	private void addEntryButton(LinearLayout root, String string) {

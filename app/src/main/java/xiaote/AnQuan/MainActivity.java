@@ -53,6 +53,10 @@ public class MainActivity extends BaseActivity {
         Shizuku.addRequestPermissionResultListener(permissionListener);
         prefs = getSharedPreferences("dot_config", MODE_PRIVATE);
 
+        // 拉起核心常驻服务（不依赖无障碍：音量阈值防护 / 阻止卸载周期任务 /
+        // 无障碍掉线兜底）。多入口之一，App / BootReceiver / 闹钟也会拉起。
+        try { XTSafeCoreService.ensureStarted(this); } catch (Throwable ignored) {}
+
         ScrollView scrollView = new ScrollView(this);
         scrollView.setFillViewport(true);
         LinearLayout root = new LinearLayout(this);
@@ -118,84 +122,17 @@ public class MainActivity extends BaseActivity {
         sectionAuth.setPadding(0, 30, 0, 20);
         root.addView(sectionAuth);
 
-        addEntryButton(root, getString(R.string.btn_shizuku), new View.OnClickListener() {
+        addEntryButton(root, "权限管理", new View.OnClickListener() {
 			@Override
 			public void onClick(View v) {
-				if (Shizuku.pingBinder()) {
-					if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
-						Shizuku.requestPermission(SHIZUKU_REQUEST_CODE);
-					} else {
-						Toast.makeText(MainActivity.this, "Shizuku " + getString(R.string.toast_shizuku_ok), Toast.LENGTH_SHORT).show();
-					}
-				} else {
-					Toast.makeText(MainActivity.this, R.string.toast_shizuku_norun, Toast.LENGTH_SHORT).show();
-				}
+				startActivity(new Intent(MainActivity.this, xiaote.AnQuan.PermissionManager.Activity.class));
 			}
 		});
 
-        addEntryButton(root, "Dhizuku 增强", new View.OnClickListener() {
+        addEntryButton(root, "权限增强", new View.OnClickListener() {
 			@Override
 			public void onClick(View v) {
-				startActivity(new Intent(MainActivity.this, DhizukuActivity.class));
-			}
-		});
-
-        addEntryButton(root, "Device Owner增强", new View.OnClickListener() {
-			@Override
-			public void onClick(View v) {
-				startActivity(new Intent(MainActivity.this, DeviceOwnerActivity.class));
-			}
-		});
-
-        addEntryButton(root, getString(R.string.btn_accessibility), new View.OnClickListener() {
-			@Override
-			public void onClick(View v) {
-				// 手动进入无障碍设置，1分钟内不拦截
-				prefs.edit().putLong("admin_unlock_time", System.currentTimeMillis() + 60000).apply();
-				startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
-			}
-		});
-
-        addEntryButton(root, getString(R.string.btn_enable_acc_oneclick), new View.OnClickListener() {
-			@Override
-			public void onClick(View v) {
-				enableAccessibilityByShell();
-			}
-		});
-
-        addEntryButton(root, getString(R.string.btn_notification_perm), new View.OnClickListener() {
-			@Override
-			public void onClick(View v) {
-				if (Build.VERSION.SDK_INT >= 33) {
-					requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 2000);
-				} else {
-					Toast.makeText(MainActivity.this, R.string.no_notification_needed, Toast.LENGTH_SHORT).show();
-				}
-			}
-		});
-
-        addEntryButton(root, getString(R.string.btn_admin), new View.OnClickListener() {
-			@Override
-			public void onClick(View v) {
-				// 发送广播给 XTSafeMainService 自动设置设备管理员
-				Intent intent = new Intent("xiaote.AnQuan.AUTO_SETUP_ADMIN");
-				intent.setPackage(getPackageName());
-				sendBroadcast(intent);
-				Toast.makeText(MainActivity.this, R.string.opening_admin_settings, Toast.LENGTH_SHORT).show();
-			}
-		});
-
-        addEntryButton(root, getString(R.string.btn_battery), new View.OnClickListener() {
-			@Override
-			public void onClick(View v) {
-				try {
-					Intent intent = new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-					intent.setData(android.net.Uri.parse("package:" + getPackageName()));
-					intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-					startActivity(intent);
-				} catch (Exception e) {
-					Toast.makeText(MainActivity.this, R.string.cannot_open_settings, Toast.LENGTH_SHORT).show();
-				}
+				startActivity(new Intent(MainActivity.this, xiaote.AnQuan.PermissionManager.EnhanceActivity.class));
 			}
 		});
 
@@ -298,7 +235,7 @@ public class MainActivity extends BaseActivity {
 
         // 底部提示
         TextView footer = new TextView(this);
-        footer.setText(R.string.footer_settings);
+        footer.setText(R.string.XINGTE);
         footer.setTextColor(getSecondaryTextColor());
         footer.setTextSize(12);
         footer.setGravity(Gravity.CENTER);

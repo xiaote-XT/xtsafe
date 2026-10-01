@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
@@ -15,7 +16,17 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 /**
- * 密码验证 Activity（独立页面，避免 Dialog 被取消）
+ * 密码验证 Activity（独立页面，避免 Dialog 被取消）。
+ *
+ * 修整点：
+ *   1. 「退出应用」补 setResult(RESULT_CANCELED)，避免父页面 isPasswordChecking
+ *      一直停在 true；
+ *   2. Android 13+ 显式注册 OnBackInvokedCallback，不再隐式依赖 onBackPressed；
+ *   3. 验证通过只调用 BaseActivity.markSessionUnlocked()，不再写 unlock_until。
+ *      之前写了 30 秒宽限窗口，BaseActivity 又优先看它，结果“第一次验证完，
+ *      之后 30 秒内回到前台都不再弹密码”，表现为密码只出现一次。
+ *      现在改为：退到后台（activityCount 归 0）即清会话标志，回来必定重新验证。
+ *   4. 全屏主题 + setFinishOnTouchOutside(false)，点空白不会误关本页。
  */
 public class PasswordLockActivity extends Activity {
 
@@ -61,8 +72,9 @@ public class PasswordLockActivity extends Activity {
                     return;
                 }
                 if (hashPassword(pwd).equals(saved)) {
-                    // 验证通过，设置 5 秒解锁窗口
-                    prefs.edit().putLong("unlock_until", System.currentTimeMillis() + 5000).apply();
+                    // 只标记会话已解锁：退到后台时 BaseActivity 会重置该标志，
+                    // 下次回到前台必定重新弹密码页。
+                    try { BaseActivity.markSessionUnlocked(); } catch (Throwable ignored) {}
                     setResult(RESULT_OK);
                     finish();
                 } else {
@@ -79,8 +91,8 @@ public class PasswordLockActivity extends Activity {
         btnExit.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                // 清除解锁窗口，确保下次启动需要验证密码
-                prefs.edit().remove("unlock_until").apply();
+                // 补 CANCELED：父页面 onActivityResult 才能正确复位 isPasswordChecking
+                setResult(RESULT_CANCELED);
                 // 回到桌面（应用退到后台，不销毁 Activity 栈）
                 moveTaskToBack(true);
             }
@@ -88,6 +100,34 @@ public class PasswordLockActivity extends Activity {
         root.addView(btnExit);
 
         setContentView(root);
+        // 已改为全屏主题（无 Dialog 外部区域），点空白不会再触发 ACTION_OUTSIDE，
+        // 这里再保险调一次 setFinishOnTouchOutside(false)，对非 Dialog 窗口无副作用。
+        try { setFinishOnTouchOutside(false); } catch (Throwable ignored) {}
+        // 阻止输入框自动获取焦点弹出键盘（用户点一下才唤起）
+        root.setFocusableInTouchMode(true);
+        root.requestFocus();
+
+        if (Build.VERSION.SDK_INT >= 33) registerBackCallback();
+    }
+
+    /** Android 13+ 显式注册返回回调，等价于 onBackPressed 的退出语义 */
+    private void registerBackCallback() {
+        getWindow().getDecorView().post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                            android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                            new android.window.OnBackInvokedCallback() {
+                                @Override
+                                public void onBackInvoked() {
+                                    setResult(RESULT_CANCELED);
+                                    finishAffinity();
+                                }
+                            });
+                } catch (Exception ignored) {}
+            }
+        });
     }
 
     private int getTextColor() {

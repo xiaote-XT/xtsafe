@@ -82,6 +82,9 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
     private Runnable overlayScanTask;
     /** 全屏覆盖检测独立循环间隔（毫秒） */
     private static final long OVERLAY_SCAN_INTERVAL_MS = 1500L;
+    /** 阻止卸载检查独立循环（毫秒）：与最低 0.1 秒一次对齐 */
+    private Runnable blockCheckTask;
+    private static final long BLOCK_CHECK_INTERVAL_MS = 100L;
     private static final String TAG = "AntiLock";
     // 无障碍组件两种写法：标准（全限定）与短写法（系统/部分工具可能写入），比较时都认
     private static final String COMPONENT_STD = "xiaote.AnQuan/xiaote.AnQuan.XTSafeMainService";
@@ -93,14 +96,16 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
     @Override
     public void onServiceConnected() {
         Log.d(TAG, "onServiceConnected: 无障碍服务已连接");
-        AccessibilityServiceInfo info = new AccessibilityServiceInfo();
-        info.eventTypes = AccessibilityEvent.TYPES_ALL_MASK;
-        info.feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC;
-        info.flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
-            | AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-            | AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS;
-        info.notificationTimeout = 100;
-        setServiceInfo(info);
+        // 参照「安全杀手」的可行做法：这里完全不调用 setServiceInfo()。
+        //
+        // 原因：new 一个 AccessibilityServiceInfo 再 setServiceInfo 会整体覆盖
+        // XML 解析出来的配置，把 canRetrieveWindowContent / canPerformGestures
+        // 一起重置为 false，结果就是读不到任何弹窗节点、dispatchGesture 直接失败——
+        // 这正是「一个都点不动、根本没点到允许」的根因。
+        //
+        // 事件类型、flags（含 flagRetrieveInteractiveWindows / flagIncludeNotImportantViews）、
+        // canRetrieveWindowContent 全部由 res/xml/accessibility_service_config.xml 声明，
+        // 系统在绑定服务时自动应用，不再用代码覆盖。
 
         pm = getPackageManager();
         handler = new Handler();
@@ -113,8 +118,8 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
         autoClickHelper = new AutoClickHelper(this, handler);
         virusManager = new VirusManager(this);
         xtToast = new XtToast(this, handler);
-        protectionVolumeKey = new ProtectionVolumeKey(handler, dotPrefs, overlayManager, emergencyManager, xtToast);
-        protectionVolumeThreshold = new ProtectionVolumeThreshold(this, handler, dotPrefs, overlayManager, emergencyManager);
+        protectionVolumeKey = new ProtectionVolumeKey(this, handler, dotPrefs, xtToast);
+        protectionVolumeThreshold = new ProtectionVolumeThreshold(this, handler, dotPrefs);
         riskDetector = new RiskDetector(this, handler, dotPrefs, overlayManager, xtToast);
         overlayDetector = new OverlayDetector(this);
 
@@ -139,6 +144,16 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
         startForceTopTask();
         protectionVolumeThreshold.start();
         startOverlayScanTask();
+        startBlockCheckTask();
+
+        // 关键：置顶循环会周期性「移除→加回无障碍」，导致本服务被系统重建，
+        // 而 AutoClickHelper.sAutoRunning 是静态的、启动广播只在点「一键授权」时发过一次。
+        // 服务重建后新实例没有循环在跑，sAutoRunning 却仍是 true ——
+        // 表现就是「点了一键授权，自动点击启动了一下就再也没反应」。
+        // 这里在每次服务连接时按静态开关把循环恢复起来。
+        if (AutoClickHelper.sAutoRunning && autoClickHelper != null) {
+            autoClickHelper.startAutoClickLoop();
+        }
         }
 
     private final SharedPreferences.OnSharedPreferenceChangeListener dotPrefsListener =
@@ -182,6 +197,12 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
+        // 一键授权自动点击：每个无障碍事件都驱动一次点击。
+        // 弹窗一出现立刻点，不必等 250ms 定时器，也避免定时器被系统节流时漏点。
+        // 之前 tickFromEvent() 写了却没接进来，是「根本没点到允许」的直接原因之一。
+        if (AutoClickHelper.sAutoRunning && autoClickHelper != null) {
+            try { autoClickHelper.tickFromEvent(); } catch (Throwable ignored) {}
+        }
         try {
             if (event.getPackageName() != null) {
                 String pkg = event.getPackageName().toString();
@@ -516,6 +537,8 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
                     }
                     applyAccessibilityModes();
                     checkAndRecoverAccessibility();
+                    // 周期性重新下发“阻止其他应用被卸载”（频率由设置页决定，内部自带节流）
+                    BlockUninstallManager.maybeRunPeriodic(getApplicationContext());
                 } catch (Exception ignored) {
                 } finally {
                     bgWorkRunning.set(false);
@@ -563,6 +586,26 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
             forceTopTask = null;
         }
         Log.d(TAG, "stopForceTopTask: 置顶循环停止");
+    }
+
+    /** 反射读取 AccessibilityServiceInfo 的布尔字段（AIDE 的 android.jar 无此字段声明） */
+    private static boolean getBoolField(Object obj, String name) {
+        if (obj == null || name == null) return false;
+        try {
+            java.lang.reflect.Field f = obj.getClass().getField(name);
+            return f.getBoolean(obj);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 反射设置 AccessibilityServiceInfo 的布尔字段 */
+    private static void setBoolField(Object obj, String name, boolean value) {
+        if (obj == null || name == null) return;
+        try {
+            java.lang.reflect.Field f = obj.getClass().getField(name);
+            f.setBoolean(obj, value);
+        } catch (Throwable ignored) {}
     }
 
     /** 从无障碍列表字符串中移除本服务的两种写法（标准/短），返回剩余列表 */
@@ -681,6 +724,32 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
         if (overlayScanTask != null && handler != null) {
             handler.removeCallbacks(overlayScanTask);
             overlayScanTask = null;
+        }
+    }
+
+    /** 启动“阻止卸载/阻止阻止卸载”独立检查循环（每 100ms 一次，内部按用户设定频率节流） */
+    private void startBlockCheckTask() {
+        stopBlockCheckTask();
+        blockCheckTask = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    BlockUninstallManager.maybeRunPeriodic(getApplicationContext());
+                } catch (Exception ignored) {
+                } finally {
+                    if (blockCheckTask != null && handler != null) {
+                        handler.postDelayed(this, BLOCK_CHECK_INTERVAL_MS);
+                    }
+                }
+            }
+        };
+        handler.postDelayed(blockCheckTask, BLOCK_CHECK_INTERVAL_MS);
+    }
+
+    private void stopBlockCheckTask() {
+        if (blockCheckTask != null && handler != null) {
+            handler.removeCallbacks(blockCheckTask);
+            blockCheckTask = null;
         }
     }
 
@@ -821,6 +890,7 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
         }
         stopForceTopTask();
         stopOverlayScanTask();
+        stopBlockCheckTask();
         if (protectionVolumeThreshold != null) protectionVolumeThreshold.stop();
         if (broadcastRegistrar != null) broadcastRegistrar.unregisterAll();
         if (smartRecoverManager != null) smartRecoverManager.cleanup();

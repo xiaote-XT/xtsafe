@@ -22,6 +22,7 @@
     <string name="tip_alpha">0=全透明 255=不透明  默认140</string>
     <string name="tip_interval">每次强制置顶的间隔时间（5-60秒）</string>
     <string name="footer_settings">设置保存后自动生效</string>
+    <string name="XINGTE">星特万创提供服务</string>
     <string name="force_on">已开启</string>
     <string name="force_off">已关闭</string>
     <string name="toast_shizuku_ok">已授权</string>

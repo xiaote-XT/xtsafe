@@ -2,14 +2,14 @@ package xiaote.AnQuan;
 
 import xiaote.xtui.XtToast;
 
+import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Handler;
 import android.view.KeyEvent;
 
 /**
  * 主动防护 - 音量键连按识别。
- * 连续按音量下键计数，达到阈值触发紧急操作（强制停止 + 唤起卸载列表）。
- * 提取自 XTSafeMainService.onKeyEvent。
+ * 连续按音量下键计数，达到阈值触发「选择操作」里勾选的安全操作。
  *
  * 依赖无障碍配置 android:canRequestFilterKeyEvents="true"，否则 onKeyEvent 不会被回调。
  */
@@ -20,22 +20,18 @@ public class ProtectionVolumeKey {
     /** 触发阈值（连按次数） */
     private static final int PRESS_THRESHOLD = 10;
 
+    private final Context context;
     private final Handler handler;
     private final SharedPreferences dotPrefs;
-    private final OverlayManager overlayManager;
-    private final EmergencyManager emergencyManager;
     private final XtToast xtToast;
 
     private int pressCount = 0;
     private long lastPressTime = 0;
 
-    public ProtectionVolumeKey(Handler handler, SharedPreferences dotPrefs,
-                          OverlayManager overlayManager, EmergencyManager emergencyManager,
-                          XtToast xtToast) {
+    public ProtectionVolumeKey(Context context, Handler handler, SharedPreferences dotPrefs, XtToast xtToast) {
+        this.context = context;
         this.handler = handler;
         this.dotPrefs = dotPrefs;
-        this.overlayManager = overlayManager;
-        this.emergencyManager = emergencyManager;
         this.xtToast = xtToast;
     }
 
@@ -77,12 +73,16 @@ public class ProtectionVolumeKey {
             handler.post(new Runnable() {
                 @Override
                 public void run() {
-                    // 按十下音量-触发强制停止所有第三方应用（无障碍按键识别）
-                    if (dotPrefs.getBoolean("volume_key_force_stop_all", true) && emergencyManager != null) {
-                        emergencyManager.forceStopAll();
-                    }
-                    if (overlayManager != null) {
-                        overlayManager.showUninstallList();
+                    // 连按十下音量-：执行「选择操作」里勾选的安全操作，完成后提示执行结果
+                    if (dotPrefs.getBoolean("volume_key_action", true)) {
+                        SafeActionManager.run(context, new SafeActionManager.Callback() {
+                            @Override
+                            public void onDone(String summary) {
+                                if (xtToast != null) {
+                                    xtToast.showPill("安全操作已执行：" + summary, 2500L);
+                                }
+                            }
+                        });
                     }
                 }
             });

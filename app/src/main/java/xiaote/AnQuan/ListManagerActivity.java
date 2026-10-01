@@ -9,14 +9,11 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
-import android.text.Editable;
-import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
@@ -30,12 +27,13 @@ import java.util.Set;
 /**
  * 名单管理（独立 Activity，不放在 SmallTool 下）。
  *
- * 顶部 tab 栏切换，目前两页：
- *   1. 敏感 App   —— 原 SensitiveAppsActivity 的功能搬入
- *   2. 管控列表   —— 原 ManagedListActivity 的功能搬入
+ * 顶部 tab 栏切换，四页：
+ *   1. 敏感 App   —— 进入敏感应用时暂时停用智能管理模式的无障碍
+ *   2. 管控列表   —— 单独标记管理，不禁止安装
+ *   3. 白名单     —— 不参与安全扫描、全屏覆盖拦截，也不参与冻结
+ *   4. 冻结应用   —— 手动冻结名单，加入即 pm disable，移出即 pm enable
  *
- * 采用「一个 Activity + 顶部切换按钮 + 内容容器重建」的结构，
- * 不依赖 Fragment / ViewPager，避免引入额外依赖。
+ * 包名统一按 xiaote/AnQuan/类名 这种斜杠路径形式展示。
  *
  * 文案全部字面量，避免 AIDE 对新增字符串资源的索引延迟。
  */
@@ -44,17 +42,20 @@ public class ListManagerActivity extends BaseActivity {
     private static final int TAB_SENSITIVE = 0;
     private static final int TAB_MANAGED = 1;
     private static final int TAB_WHITELIST = 2;
+    private static final int TAB_FROZEN = 3;
 
     /** 应用选择器请求码 */
     private static final int REQ_PICK_SENSITIVE = 4001;
     private static final int REQ_PICK_MANAGED = 4002;
     private static final int REQ_PICK_WHITELIST = 4003;
+    private static final int REQ_PICK_FROZEN = 4004;
 
     private int currentTab = TAB_SENSITIVE;
 
     private Button tabSensitiveBtn;
     private Button tabManagedBtn;
     private Button tabWhitelistBtn;
+    private Button tabFrozenBtn;
     private LinearLayout contentContainer;
 
     private PackageManager pm;
@@ -71,6 +72,10 @@ public class ListManagerActivity extends BaseActivity {
     // ===== 白名单 =====
     private final List<String> whitelistItems = new ArrayList<String>();
     private WhitelistAdapter whitelistAdapter;
+
+    // ===== 冻结应用 =====
+    private final List<String> frozenItems = new ArrayList<String>();
+    private FrozenAdapter frozenAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -92,40 +97,16 @@ public class ListManagerActivity extends BaseActivity {
         // ===== 顶部 tab 栏 =====
         LinearLayout tabBar = new LinearLayout(this);
         tabBar.setOrientation(LinearLayout.HORIZONTAL);
-        tabBar.setPadding(dpToPx(12), 0, dpToPx(12), 0);
+        tabBar.setPadding(dpToPx(8), 0, dpToPx(8), 0);
 
-        tabSensitiveBtn = new Button(this);
-        tabSensitiveBtn.setText("敏感App");
-        tabSensitiveBtn.setTextSize(14);
-        tabSensitiveBtn.setAllCaps(false);
-        tabSensitiveBtn.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f));
-        tabSensitiveBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) { switchTab(TAB_SENSITIVE); }
-        });
+        tabSensitiveBtn = makeTab("敏感App", TAB_SENSITIVE);
+        tabManagedBtn = makeTab("管控列表", TAB_MANAGED);
+        tabWhitelistBtn = makeTab("白名单", TAB_WHITELIST);
+        tabFrozenBtn = makeTab("冻结应用", TAB_FROZEN);
         tabBar.addView(tabSensitiveBtn);
-
-        tabManagedBtn = new Button(this);
-        tabManagedBtn.setText("管控列表");
-        tabManagedBtn.setTextSize(14);
-        tabManagedBtn.setAllCaps(false);
-        tabManagedBtn.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f));
-        tabManagedBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) { switchTab(TAB_MANAGED); }
-        });
         tabBar.addView(tabManagedBtn);
-
-        tabWhitelistBtn = new Button(this);
-        tabWhitelistBtn.setText("白名单");
-        tabWhitelistBtn.setTextSize(14);
-        tabWhitelistBtn.setAllCaps(false);
-        tabWhitelistBtn.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f));
-        tabWhitelistBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) { switchTab(TAB_WHITELIST); }
-        });
         tabBar.addView(tabWhitelistBtn);
+        tabBar.addView(tabFrozenBtn);
 
         root.addView(tabBar);
 
@@ -158,6 +139,20 @@ public class ListManagerActivity extends BaseActivity {
         switchTab(TAB_SENSITIVE);
     }
 
+    private Button makeTab(String text, final int tab) {
+        Button b = new Button(this);
+        b.setText(text);
+        b.setTextSize(13);
+        b.setAllCaps(false);
+        b.setPadding(dpToPx(4), 0, dpToPx(4), 0);
+        b.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f));
+        b.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { switchTab(tab); }
+        });
+        return b;
+    }
+
     private void registerBackCallback() {
         getWindow().getDecorView().post(new Runnable() {
             @Override
@@ -182,34 +177,28 @@ public class ListManagerActivity extends BaseActivity {
         contentContainer.removeAllViews();
         if (tab == TAB_SENSITIVE) buildSensitivePage();
         else if (tab == TAB_MANAGED) buildManagedPage();
-        else buildWhitelistPage();
+        else if (tab == TAB_WHITELIST) buildWhitelistPage();
+        else buildFrozenPage();
     }
 
     private void updateTabStyle() {
-        if (tabSensitiveBtn == null || tabManagedBtn == null || tabWhitelistBtn == null) return;
+        if (tabSensitiveBtn == null) return;
         int on = Color.argb(255, 30, 30, 30);
         int off = Color.argb(140, 120, 120, 120);
-        boolean s = (currentTab == TAB_SENSITIVE);
-        boolean m = (currentTab == TAB_MANAGED);
-        boolean w = (currentTab == TAB_WHITELIST);
-        tabSensitiveBtn.setTextColor(s ? on : off);
-        tabManagedBtn.setTextColor(m ? on : off);
-        tabWhitelistBtn.setTextColor(w ? on : off);
-        tabSensitiveBtn.setTypeface(null, s ? Typeface.BOLD : Typeface.NORMAL);
-        tabManagedBtn.setTypeface(null, m ? Typeface.BOLD : Typeface.NORMAL);
-        tabWhitelistBtn.setTypeface(null, w ? Typeface.BOLD : Typeface.NORMAL);
+        Button[] btns = {tabSensitiveBtn, tabManagedBtn, tabWhitelistBtn, tabFrozenBtn};
+        int[] tabs = {TAB_SENSITIVE, TAB_MANAGED, TAB_WHITELIST, TAB_FROZEN};
+        for (int i = 0; i < btns.length; i++) {
+            if (btns[i] == null) continue;
+            boolean on2 = (currentTab == tabs[i]);
+            btns[i].setTextColor(on2 ? on : off);
+            btns[i].setTypeface(null, on2 ? Typeface.BOLD : Typeface.NORMAL);
+        }
     }
 
     // ==================== 敏感 App 页 ====================
 
     private void buildSensitivePage() {
-        TextView tip = new TextView(this);
-        tip.setText("进入敏感App时，智能管理模式的应用将暂时停止无障碍\n长按可移除，默认包名可恢复");
-        tip.setTextColor(getSecondaryTextColor());
-        tip.setTextSize(12);
-        tip.setGravity(Gravity.CENTER);
-        tip.setPadding(dpToPx(16), dpToPx(8), dpToPx(16), dpToPx(8));
-        contentContainer.addView(tip);
+        addTip("进入敏感App时，智能管理模式的应用将暂时停止无障碍\n长按可移除，默认包名可恢复");
 
         Button pickBtn = new Button(this);
         pickBtn.setText("选择应用");
@@ -217,14 +206,7 @@ public class ListManagerActivity extends BaseActivity {
         pickBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                try {
-                    Intent i = new Intent(ListManagerActivity.this,
-                            xiaote.AnQuan.SmallTool.AppPicker.AppPickerActivity.class);
-                    i.putExtra("title", "选择敏感应用");
-                    startActivityForResult(i, REQ_PICK_SENSITIVE);
-                } catch (Throwable t) {
-                    Toast.makeText(ListManagerActivity.this, "无法打开应用选择器", Toast.LENGTH_SHORT).show();
-                }
+                openPicker("选择敏感应用", REQ_PICK_SENSITIVE);
             }
         });
         contentContainer.addView(pickBtn, new LinearLayout.LayoutParams(-1, -2));
@@ -246,7 +228,7 @@ public class ListManagerActivity extends BaseActivity {
                     if (isRemoved) {
                         new AlertDialog.Builder(ListManagerActivity.this)
                                 .setTitle("恢复默认")
-                                .setMessage("将 " + pkg + " 加回敏感列表？")
+                                .setMessage("将 " + formatPkg(pkg) + " 加回敏感列表？")
                                 .setPositiveButton("恢复", new DialogInterface.OnClickListener() {
                                     @Override public void onClick(DialogInterface d, int w) {
                                         ProtectedPackages.restoreProtected(ListManagerActivity.this, pkg);
@@ -257,7 +239,7 @@ public class ListManagerActivity extends BaseActivity {
                     } else {
                         new AlertDialog.Builder(ListManagerActivity.this)
                                 .setTitle("移除")
-                                .setMessage("确定将 " + pkg + " 从敏感列表移除？\n（可长按恢复）")
+                                .setMessage("确定将 " + formatPkg(pkg) + " 从敏感列表移除？\n（可长按恢复）")
                                 .setPositiveButton("移除", new DialogInterface.OnClickListener() {
                                     @Override public void onClick(DialogInterface d, int w) {
                                         ProtectedPackages.removeProtected(ListManagerActivity.this, pkg);
@@ -269,7 +251,7 @@ public class ListManagerActivity extends BaseActivity {
                 } else {
                     new AlertDialog.Builder(ListManagerActivity.this)
                             .setTitle("删除")
-                            .setMessage("确定删除自定义包名 " + pkg + "？")
+                            .setMessage("确定删除自定义包名 " + formatPkg(pkg) + "？")
                             .setPositiveButton("删除", new DialogInterface.OnClickListener() {
                                 @Override public void onClick(DialogInterface d, int w) {
                                     ProtectedPackages.removeProtected(ListManagerActivity.this, pkg);
@@ -295,10 +277,6 @@ public class ListManagerActivity extends BaseActivity {
             sensitiveItems.add("─── 已移除的默认 ───");
             sensitiveItems.addAll(removed);
         }
-        applySensitiveFilter();
-    }
-
-    private void applySensitiveFilter() {
         sensitiveFiltered.clear();
         sensitiveFiltered.addAll(sensitiveItems);
         if (sensitiveAdapter != null) sensitiveAdapter.notifyDataSetChanged();
@@ -312,51 +290,15 @@ public class ListManagerActivity extends BaseActivity {
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
             String item = sensitiveFiltered.get(position);
-            if (item != null && item.startsWith("───")) {
-                TextView divider = new TextView(ListManagerActivity.this);
-                divider.setText(item);
-                divider.setTextSize(12);
-                divider.setTextColor(Color.argb(150, 120, 120, 120));
-                divider.setGravity(Gravity.CENTER);
-                divider.setPadding(0, dpToPx(12), 0, dpToPx(12));
-                return divider;
-            }
-            LinearLayout row = new LinearLayout(ListManagerActivity.this);
-            row.setOrientation(LinearLayout.VERTICAL);
-            row.setPadding(dpToPx(20), dpToPx(12), dpToPx(20), dpToPx(12));
-
-            String appName = item;
-            try {
-                ApplicationInfo ai = pm.getApplicationInfo(item, 0);
-                appName = pm.getApplicationLabel(ai).toString();
-            } catch (Exception ignored) {}
-
-            TextView nameView = new TextView(ListManagerActivity.this);
-            nameView.setText(appName);
-            nameView.setTextSize(15);
-            nameView.setTextColor(getTextColor());
-            nameView.setTypeface(null, Typeface.BOLD);
-            row.addView(nameView);
-
-            TextView pkgView = new TextView(ListManagerActivity.this);
-            pkgView.setText(item);
-            pkgView.setTextSize(11);
-            pkgView.setTextColor(getSecondaryTextColor());
-            row.addView(pkgView);
-            return row;
+            if (item != null && item.startsWith("───")) return buildDivider(item);
+            return buildRow(item, "（长按移除 / 恢复）");
         }
     }
 
     // ==================== 管控列表页 ====================
 
     private void buildManagedPage() {
-        TextView tip = new TextView(this);
-        tip.setText("管控应用不禁止安装，仅单独标记管理\n长按条目可移除管控");
-        tip.setTextColor(getSecondaryTextColor());
-        tip.setTextSize(12);
-        tip.setGravity(Gravity.CENTER);
-        tip.setPadding(dpToPx(16), dpToPx(8), dpToPx(16), dpToPx(8));
-        contentContainer.addView(tip);
+        addTip("管控应用不禁止安装，仅单独标记管理\n长按条目可移除管控");
 
         Button pickManagedBtn = new Button(this);
         pickManagedBtn.setText("选择应用");
@@ -364,14 +306,7 @@ public class ListManagerActivity extends BaseActivity {
         pickManagedBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                try {
-                    Intent i = new Intent(ListManagerActivity.this,
-                            xiaote.AnQuan.SmallTool.AppPicker.AppPickerActivity.class);
-                    i.putExtra("title", "选择管控应用");
-                    startActivityForResult(i, REQ_PICK_MANAGED);
-                } catch (Throwable t) {
-                    Toast.makeText(ListManagerActivity.this, "无法打开应用选择器", Toast.LENGTH_SHORT).show();
-                }
+                openPicker("选择管控应用", REQ_PICK_MANAGED);
             }
         });
         contentContainer.addView(pickManagedBtn, new LinearLayout.LayoutParams(-1, -2));
@@ -386,10 +321,7 @@ public class ListManagerActivity extends BaseActivity {
             public boolean onItemLongClick(android.widget.AdapterView<?> parent, View view, int position, long id) {
                 if (position < 0 || position >= managedItems.size()) return false;
                 final String pkg = managedItems.get(position);
-                String label = pkg;
-                try {
-                    label = pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString();
-                } catch (Exception ignored) {}
+                String label = appLabel(pkg);
                 new AlertDialog.Builder(ListManagerActivity.this)
                         .setTitle("移除管控")
                         .setMessage("确定将 " + label + " 移除管控？")
@@ -398,7 +330,7 @@ public class ListManagerActivity extends BaseActivity {
                                 VirusPackages.removeManagedPackage(ListManagerActivity.this, pkg);
                                 reloadManaged();
                                 Toast.makeText(ListManagerActivity.this,
-                                        "已移除管控: " + pkg, Toast.LENGTH_SHORT).show();
+                                        "已移除管控: " + formatPkg(pkg), Toast.LENGTH_SHORT).show();
                             }
                         })
                         .setNegativeButton("取消", null).show();
@@ -412,7 +344,9 @@ public class ListManagerActivity extends BaseActivity {
 
     private void reloadManaged() {
         managedItems.clear();
-        managedItems.addAll(VirusPackages.getManagedPackages(this));
+        List<String> list = new ArrayList<String>(VirusPackages.getManagedPackages(this));
+        Collections.sort(list);
+        managedItems.addAll(list);
         if (managedAdapter != null) managedAdapter.notifyDataSetChanged();
     }
 
@@ -423,47 +357,14 @@ public class ListManagerActivity extends BaseActivity {
 
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
-            LinearLayout row;
-            if (convertView instanceof LinearLayout) {
-                row = (LinearLayout) convertView;
-                row.removeAllViews();
-            } else {
-                row = new LinearLayout(ListManagerActivity.this);
-                row.setOrientation(LinearLayout.VERTICAL);
-                row.setPadding(dpToPx(20), dpToPx(12), dpToPx(20), dpToPx(12));
-            }
-            String pkg = managedItems.get(position);
-            String appName = pkg;
-            try {
-                appName = pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString();
-            } catch (Exception ignored) {}
-
-            TextView nameView = new TextView(ListManagerActivity.this);
-            nameView.setText(appName);
-            nameView.setTextSize(15);
-            nameView.setTextColor(getTextColor());
-            nameView.setTypeface(null, Typeface.BOLD);
-            row.addView(nameView);
-
-            TextView subView = new TextView(ListManagerActivity.this);
-            subView.setText(pkg + "\n（长按移除管控）");
-            subView.setTextSize(11);
-            subView.setTextColor(Color.argb(255, 40, 100, 200));
-            row.addView(subView);
-            return row;
+            return buildRow(managedItems.get(position), "（长按移除管控）");
         }
     }
 
     // ==================== 白名单页 ====================
 
     private void buildWhitelistPage() {
-        TextView tip = new TextView(this);
-        tip.setText("白名单应用不参与安全扫描，也不参与全屏覆盖拦截\n长按条目可移除");
-        tip.setTextColor(getSecondaryTextColor());
-        tip.setTextSize(12);
-        tip.setGravity(Gravity.CENTER);
-        tip.setPadding(dpToPx(16), dpToPx(8), dpToPx(16), dpToPx(8));
-        contentContainer.addView(tip);
+        addTip("白名单应用不参与安全扫描、全屏覆盖拦截，也不参与冻结\n长按条目可移除");
 
         Button pickBtn = new Button(this);
         pickBtn.setText("选择应用");
@@ -471,14 +372,7 @@ public class ListManagerActivity extends BaseActivity {
         pickBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                try {
-                    Intent i = new Intent(ListManagerActivity.this,
-                            xiaote.AnQuan.SmallTool.AppPicker.AppPickerActivity.class);
-                    i.putExtra("title", "选择白名单应用");
-                    startActivityForResult(i, REQ_PICK_WHITELIST);
-                } catch (Throwable t) {
-                    Toast.makeText(ListManagerActivity.this, "无法打开应用选择器", Toast.LENGTH_SHORT).show();
-                }
+                openPicker("选择白名单应用", REQ_PICK_WHITELIST);
             }
         });
         contentContainer.addView(pickBtn, new LinearLayout.LayoutParams(-1, -2));
@@ -493,10 +387,7 @@ public class ListManagerActivity extends BaseActivity {
             public boolean onItemLongClick(android.widget.AdapterView<?> parent, View view, int position, long id) {
                 if (position < 0 || position >= whitelistItems.size()) return false;
                 final String pkg = whitelistItems.get(position);
-                String label = pkg;
-                try {
-                    label = pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString();
-                } catch (Exception ignored) {}
+                String label = appLabel(pkg);
                 new AlertDialog.Builder(ListManagerActivity.this)
                         .setTitle("移除白名单")
                         .setMessage("确定将 " + label + " 移出白名单？")
@@ -505,7 +396,7 @@ public class ListManagerActivity extends BaseActivity {
                                 WhitelistPackages.remove(ListManagerActivity.this, pkg);
                                 reloadWhitelist();
                                 Toast.makeText(ListManagerActivity.this,
-                                        "已移出白名单: " + pkg, Toast.LENGTH_SHORT).show();
+                                        "已移出白名单: " + formatPkg(pkg), Toast.LENGTH_SHORT).show();
                             }
                         })
                         .setNegativeButton("取消", null).show();
@@ -532,38 +423,146 @@ public class ListManagerActivity extends BaseActivity {
 
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
-            LinearLayout row;
-            if (convertView instanceof LinearLayout) {
-                row = (LinearLayout) convertView;
-                row.removeAllViews();
-            } else {
-                row = new LinearLayout(ListManagerActivity.this);
-                row.setOrientation(LinearLayout.VERTICAL);
-                row.setPadding(dpToPx(20), dpToPx(12), dpToPx(20), dpToPx(12));
-            }
-            String pkg = whitelistItems.get(position);
-            String appName = pkg;
-            try {
-                appName = pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString();
-            } catch (Exception ignored) {}
-
-            TextView nameView = new TextView(ListManagerActivity.this);
-            nameView.setText(appName);
-            nameView.setTextSize(15);
-            nameView.setTextColor(getTextColor());
-            nameView.setTypeface(null, Typeface.BOLD);
-            row.addView(nameView);
-
-            TextView subView = new TextView(ListManagerActivity.this);
-            subView.setText(pkg + "\n（长按移出白名单）");
-            subView.setTextSize(11);
-            subView.setTextColor(Color.argb(255, 40, 100, 200));
-            row.addView(subView);
-            return row;
+            return buildRow(whitelistItems.get(position), "（长按移出白名单）");
         }
     }
 
-    // ==================== 应用选择器回调 ====================
+    // ==================== 冻结应用页 ====================
+
+    private void buildFrozenPage() {
+        addTip("列表展示系统内当前真实被冻结（pm disable）的全部应用\n加入即冻结、长按即解冻；白名单应用不会参与冻结");
+
+        Button pickBtn = new Button(this);
+        pickBtn.setText("选择应用（加入并冻结）");
+        pickBtn.setTextSize(14);
+        pickBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                openPicker("选择要冻结的应用", REQ_PICK_FROZEN);
+            }
+        });
+        contentContainer.addView(pickBtn, new LinearLayout.LayoutParams(-1, -2));
+
+        ListView listView = new ListView(this);
+        listView.setDividerHeight(1);
+        listView.setLayoutParams(new LinearLayout.LayoutParams(-1, 0, 1f));
+        frozenAdapter = new FrozenAdapter();
+        listView.setAdapter(frozenAdapter);
+        listView.setOnItemLongClickListener(new android.widget.AdapterView.OnItemLongClickListener() {
+            @Override
+            public boolean onItemLongClick(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                if (position < 0 || position >= frozenItems.size()) return false;
+                final String pkg = frozenItems.get(position);
+                String label = appLabel(pkg);
+                new AlertDialog.Builder(ListManagerActivity.this)
+                        .setTitle("解冻")
+                        .setMessage("确定解冻 " + label + "？")
+                        .setPositiveButton("解冻", new DialogInterface.OnClickListener() {
+                            @Override public void onClick(DialogInterface d, int w) {
+                                unfreezePackage(pkg);
+                            }
+                        })
+                        .setNegativeButton("取消", null).show();
+                return true;
+            }
+        });
+        contentContainer.addView(listView);
+
+        reloadFrozen();
+    }
+
+    /**
+     * 从系统真实状态加载冻结列表（pm list packages -d），
+     * 而不是读星特安全本地记录，避免手动/其他工具冻结的应用不显示。
+     */
+    private void reloadFrozen() {
+        frozenItems.clear();
+        if (frozenAdapter != null) frozenAdapter.notifyDataSetChanged();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final List<String> list = new ArrayList<String>(
+                        SafeActionManager.listDisabledPackages(ListManagerActivity.this));
+                Collections.sort(list);
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (isFinishing()) return;
+                        frozenItems.clear();
+                        frozenItems.addAll(list);
+                        if (frozenAdapter != null) frozenAdapter.notifyDataSetChanged();
+                    }
+                });
+            }
+        }, "load-frozen").start();
+    }
+
+    private class FrozenAdapter extends BaseAdapter {
+        @Override public int getCount() { return frozenItems.size(); }
+        @Override public Object getItem(int position) { return frozenItems.get(position); }
+        @Override public long getItemId(int position) { return position; }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            return buildRow(frozenItems.get(position), "（已冻结，长按解冻）");
+        }
+    }
+
+    /** 加入冻结名单并立即执行冻结 */
+    private void freezePackage(final String pkg) {
+        if (WhitelistPackages.isWhitelisted(this, pkg)) {
+            Toast.makeText(this, "该应用在白名单中，跳过冻结", Toast.LENGTH_LONG).show();
+            return;
+        }
+        FrozenPackages.add(this, pkg);
+        reloadFrozen();
+        Toast.makeText(this, "已加入冻结: " + formatPkg(pkg), Toast.LENGTH_SHORT).show();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final boolean ok = SafeActionManager.freezeOnePublic(pkg);
+                SafeActionManager.appendLog(ListManagerActivity.this,
+                        "手动冻结 " + pkg + " -> " + (ok ? "成功" : "失败"));
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (isFinishing()) return;
+                        if (!ok) Toast.makeText(ListManagerActivity.this,
+                                "冻结失败，请检查 Shizuku 权限", Toast.LENGTH_LONG).show();
+                        reloadFrozen();
+                    }
+                });
+            }
+        }, "freeze-one").start();
+    }
+
+    /** 移出冻结名单并解冻 */
+    private void unfreezePackage(final String pkg) {
+        FrozenPackages.remove(this, pkg);
+        reloadFrozen();
+        Toast.makeText(this, "已解冻: " + formatPkg(pkg), Toast.LENGTH_SHORT).show();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final boolean ok = SafeActionManager.unfreezeOnePublic(pkg);
+                SafeActionManager.appendLog(ListManagerActivity.this,
+                        "手动解冻 " + pkg + " -> " + (ok ? "成功" : "失败"));
+            }
+        }, "unfreeze-one").start();
+    }
+
+    // ==================== 应用选择器 ====================
+
+    private void openPicker(String title, int req) {
+        try {
+            Intent i = new Intent(ListManagerActivity.this,
+                    xiaote.AnQuan.SmallTool.AppPicker.AppPickerActivity.class);
+            i.putExtra("title", title);
+            startActivityForResult(i, req);
+        } catch (Throwable t) {
+            Toast.makeText(ListManagerActivity.this, "无法打开应用选择器", Toast.LENGTH_SHORT).show();
+        }
+    }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -580,19 +579,116 @@ public class ListManagerActivity extends BaseActivity {
         if (requestCode == REQ_PICK_SENSITIVE) {
             ProtectedPackages.addProtected(this, pkg);
             reloadSensitive();
-            Toast.makeText(this, "已新增敏感应用: " + pkg, Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "已新增敏感应用: " + formatPkg(pkg), Toast.LENGTH_SHORT).show();
         } else if (requestCode == REQ_PICK_MANAGED) {
             VirusPackages.addManagedPackage(this, pkg);
             reloadManaged();
-            Toast.makeText(this, "已加入管控: " + pkg, Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "已加入管控: " + formatPkg(pkg), Toast.LENGTH_SHORT).show();
         } else if (requestCode == REQ_PICK_WHITELIST) {
             WhitelistPackages.add(this, pkg);
             reloadWhitelist();
-            Toast.makeText(this, "已加入白名单: " + pkg, Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "已加入白名单: " + formatPkg(pkg), Toast.LENGTH_SHORT).show();
+        } else if (requestCode == REQ_PICK_FROZEN) {
+            freezePackage(pkg);
         }
     }
 
-    // ==================== 工具 ====================
+    // ==================== 通用 UI ====================
+
+    private void addTip(String text) {
+        TextView tip = new TextView(this);
+        tip.setText(text);
+        tip.setTextColor(getSecondaryTextColor());
+        tip.setTextSize(12);
+        tip.setGravity(Gravity.CENTER);
+        tip.setPadding(dpToPx(16), dpToPx(8), dpToPx(16), dpToPx(8));
+        contentContainer.addView(tip);
+    }
+
+    private TextView buildDivider(String text) {
+        TextView divider = new TextView(this);
+        divider.setText(text);
+        divider.setTextSize(12);
+        divider.setTextColor(Color.argb(150, 120, 120, 120));
+        divider.setGravity(Gravity.CENTER);
+        divider.setPadding(0, dpToPx(12), 0, dpToPx(12));
+        return divider;
+    }
+
+    /**
+     * 统一列表行：应用名 + 包名（斜杠路径形式）+ 提示。
+     * 包名展示统一走 formatPkg，例如 xiaote.AnQuan -> xiaote/AnQuan。
+     */
+    private LinearLayout buildRow(String pkg, String hint) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setPadding(dpToPx(20), dpToPx(12), dpToPx(20), dpToPx(12));
+
+        TextView nameView = new TextView(this);
+        nameView.setText(appLabel(pkg));
+        nameView.setTextSize(15);
+        nameView.setTextColor(getTextColor());
+        nameView.setTypeface(null, Typeface.BOLD);
+        row.addView(nameView);
+
+        TextView pkgView = new TextView(this);
+        pkgView.setText(formatPkg(pkg) + "\n" + hint);
+        pkgView.setTextSize(11);
+        pkgView.setTextColor(Color.argb(255, 40, 100, 200));
+        row.addView(pkgView);
+        return row;
+    }
+
+    /**
+     * 包名转成便于定位的文件路径形式：
+     *   com.example.app -> com/example/app/MainActivity.java
+     * 取不到启动 Activity 时退化为 com/example/app。
+     */
+    private String formatPkg(String pkg) {
+        if (pkg == null || pkg.isEmpty()) return "";
+        String base = pkg.replace('.', '/');
+        String cls = null;
+        try {
+            Intent launch = pm.getLaunchIntentForPackage(pkg);
+            if (launch != null && launch.getComponent() != null) {
+                cls = launch.getComponent().getClassName();
+            }
+        } catch (Throwable ignored) {}
+        // 被冻结/停用的应用 getLaunchIntentForPackage 返回 null，
+        // 回退到清单里的 Activity（MATCH_DISABLED_COMPONENTS=512），
+        // 否则冻结页只能显示到包路径、缺少 xxx.java。
+        if (cls == null || cls.isEmpty()) {
+            try {
+                android.content.pm.PackageInfo pi = pm.getPackageInfo(pkg, 1 | 512);
+                if (pi != null && pi.activities != null) {
+                    for (android.content.pm.ActivityInfo ai : pi.activities) {
+                        if (ai != null && ai.name != null && !ai.name.isEmpty()) {
+                            cls = ai.name;
+                            break;
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {}
+        }
+        if (cls != null && !cls.isEmpty()) {
+            int dot = cls.lastIndexOf('.');
+            String simple = dot >= 0 ? cls.substring(dot + 1) : cls;
+            if (!simple.isEmpty()) return base + "/" + simple + ".java";
+        }
+        return base;
+    }
+
+    private String appLabel(String pkg) {
+        // 被冻结/停用的应用用默认 flag 查不到，需要带 MATCH_DISABLED_COMPONENTS(512)
+        // 与 MATCH_UNINSTALLED_PACKAGES(8192) 才能取到 ApplicationInfo 和应用名，
+        // 否则冻结页每行只能显示包名。
+        try {
+            ApplicationInfo ai = pm.getApplicationInfo(pkg, 512 | 8192);
+            return pm.getApplicationLabel(ai).toString();
+        } catch (Exception e) {
+            return pkg;
+        }
+    }
 
     private int getTextColor() {
         return Color.argb(255, 30, 30, 30);

@@ -60,14 +60,59 @@ public class App extends Application {
         try {
             SecurityScanActivity.ensureRulesLoaded(this);
         } catch (Throwable ignored) {}
-        loadVirusPackages();
-        registerInstallScanReceiver();
-        loadSensitivePackages();
-        checkAutoUpdate();
+        // 多进程说明：App.onCreate 在 :core 进程也会执行一遍。
+        // 安装广播注册、云端规则检查只应在主进程做，否则重复注册 / 重复下载。
+        if (isMainProcess()) {
+            loadVirusPackages();
+            registerInstallScanReceiver();
+            loadSensitivePackages();
+            checkAutoUpdate();
+        }
 
         // 调度强制置顶兜底闹钟（独立于服务进程，防锁屏停止后服务死亡无法恢复）
         ForceTopAlarmReceiver.schedule(this);
+
+        // 拉起核心常驻服务（不依赖无障碍，负责音量阈值防护 / 阻止卸载周期任务 /
+        // 无障碍掉线兜底）。入口之一，其余入口：BootReceiver / ForceTopAlarmReceiver /
+        // MainActivity，任一存活即可保证这部分防护在无障碍被关闭后仍然工作。
+        try {
+            XTSafeCoreService.ensureStarted(this);
+        } catch (Throwable ignored) {}
         
+    }
+
+    /**
+     * 当前进程是否为主进程（非 :core 等子进程）。
+     *
+     * App.onCreate 在每个进程都会执行，安装广播注册、云端规则下载这类
+     * 只应做一次的事必须按进程区分，否则 :core 子进程会重复注册/重复下载。
+     */
+    private boolean isMainProcess() {
+        String cur = currentProcessName();
+        if (cur == null || cur.isEmpty()) return true;
+        return cur.equals(getPackageName());
+    }
+
+    /** 取当前进程名：API 28+ 走 Application.getProcessName()，低版本读 /proc/self/cmdline */
+    private String currentProcessName() {
+        try {
+            if (Build.VERSION.SDK_INT >= 28) {
+                String n = android.app.Application.getProcessName();
+                if (n != null && !n.isEmpty()) return n;
+            }
+        } catch (Throwable ignored) {}
+        try {
+            java.io.FileInputStream fis = new java.io.FileInputStream("/proc/self/cmdline");
+            byte[] buf = new byte[128];
+            int len = fis.read(buf);
+            fis.close();
+            if (len > 0) {
+                int end = 0;
+                while (end < len && buf[end] != 0) end++;
+                return new String(buf, 0, end, "UTF-8").trim();
+            }
+        } catch (Throwable ignored) {}
+        return null;
     }
 
     /** 应用启动时从规则文件加载病毒包名、敏感App、白名单，确保各服务拿到最新列表 */

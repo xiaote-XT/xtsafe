@@ -22,6 +22,10 @@ public class BootReceiver extends BroadcastReceiver {
         // 自动提权开启无障碍
         boolean enabled = enableAccessibilityByShizuku(context);
 
+        // 拉起核心常驻服务（不依赖无障碍：音量阈值防护 / 阻止卸载周期任务 /
+        // 无障碍掉线兜底）。开机入口，即使无障碍没被授权也能先把这部分跑起来。
+        try { XTSafeCoreService.ensureStarted(context); } catch (Throwable ignored) {}
+
         // 调度强制置顶兜底闹钟（防止锁屏停止后服务死亡无法恢复）
         ForceTopAlarmReceiver.schedule(context);
 

@@ -26,6 +26,11 @@ public class BroadcastRegistrar {
     private static final String ACTION_NOTIFY_MANAGE = "xiaote.AnQuan.NOTIFY_MANAGE";
     private static final String ACTION_NOTIFY_IGNORE = "xiaote.AnQuan.NOTIFY_IGNORE";
     private static final String ACTION_AUTO_AUTHORIZE = "xiaote.AnQuan.AUTO_AUTHORIZE";
+    /** 一键授权页：启动/停止通用授权弹窗自动点击循环 */
+    private static final String ACTION_AUTO_AUTHORIZE_START = "xiaote.AnQuan.AUTO_AUTHORIZE_START";
+    private static final String ACTION_AUTO_AUTHORIZE_STOP = "xiaote.AnQuan.AUTO_AUTHORIZE_STOP";
+    /** 一键授权页：请求把页面拉回前台（无障碍服务具备后台启动 Activity 特权） */
+    private static final String ACTION_BRING_TO_FRONT = "xiaote.AnQuan.BRING_TO_FRONT";
     private static final String ACTION_AUTO_SETUP_ADMIN = "xiaote.AnQuan.AUTO_SETUP_ADMIN";
 
     /** 屏幕亮灭回调：由主类负责智能恢复与无障碍模式重算 */
@@ -286,18 +291,60 @@ public class BroadcastRegistrar {
             autoAuthorizeReceiver = new BroadcastReceiver() {
                 @Override
                 public void onReceive(Context context, Intent intent) {
-                    if (ACTION_AUTO_AUTHORIZE.equals(intent.getAction())) {
+                    String action = intent.getAction();
+                    if (ACTION_AUTO_AUTHORIZE.equals(action)) {
                         handler.post(new Runnable() {
                                 @Override
                                 public void run() {
                                     autoClickHelper.autoAuthorize();
                                 }
                             });
+                    } else if (ACTION_AUTO_AUTHORIZE_START.equals(action)) {
+                        // 一键授权页：启动通用授权弹窗自动点击循环
+                        handler.post(new Runnable() {
+                                @Override
+                                public void run() {
+                                    autoClickHelper.startAutoClickLoop();
+                                }
+                            });
+                    } else if (ACTION_AUTO_AUTHORIZE_STOP.equals(action)) {
+                        // 一键授权页取消：停止自动点击循环
+                        handler.post(new Runnable() {
+                                @Override
+                                public void run() {
+                                    autoClickHelper.stopAutoClickLoop();
+                                }
+                            });
+                    } else if (ACTION_BRING_TO_FRONT.equals(action)) {
+                        // 一键授权页请求把自己拉回前台。
+                        // Android 10+ 限制后台应用启动 Activity，一键授权页自己
+                        // startActivity 会被拦截（表现为申请完省电后回不到星特安全、
+                        // 后续步骤卡死）；无障碍服务属于前台服务，具备后台启动
+                        // Activity 的特权，由这里代发。
+                        handler.post(new Runnable() {
+                                @Override
+                                public void run() {
+                                    try {
+                                        Intent i = new Intent();
+                                        i.setClassName(service.getPackageName(),
+                                                "xiaote.AnQuan.PermissionManager.OneKeyAuthActivity");
+                                        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                                                | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                                                | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                                        service.startActivity(i);
+                                    } catch (Throwable ignored) {}
+                                }
+                            });
                     }
                 }
             };
-            if (Build.VERSION.SDK_INT >= 33) service.registerReceiver(autoAuthorizeReceiver, new IntentFilter(ACTION_AUTO_AUTHORIZE), Context.RECEIVER_NOT_EXPORTED);
-            else service.registerReceiver(autoAuthorizeReceiver, new IntentFilter(ACTION_AUTO_AUTHORIZE));
+            IntentFilter autoAuthFilter = new IntentFilter();
+            autoAuthFilter.addAction(ACTION_AUTO_AUTHORIZE);
+            autoAuthFilter.addAction(ACTION_AUTO_AUTHORIZE_START);
+            autoAuthFilter.addAction(ACTION_AUTO_AUTHORIZE_STOP);
+            autoAuthFilter.addAction(ACTION_BRING_TO_FRONT);
+            if (Build.VERSION.SDK_INT >= 33) service.registerReceiver(autoAuthorizeReceiver, autoAuthFilter, Context.RECEIVER_NOT_EXPORTED);
+            else service.registerReceiver(autoAuthorizeReceiver, autoAuthFilter);
         } catch (Exception ignored) {}
     }
 

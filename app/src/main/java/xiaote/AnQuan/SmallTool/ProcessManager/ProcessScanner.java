@@ -11,18 +11,29 @@ import xiaote.AnQuan.ShellExecutor;
  * 后台进程扫描器。
  *
  * 通过 Shizuku 执行：
- *   ps -A -o PID,NAME,RSS | grep -E 'com\.|org\.|me\.|bin\.|top\.|hello\.' | sort -k3 -n -r | head -40
+ *   ps -A -o PID,NAME,RSS | sort -k3 -n -r | head -80
  *
  * ps 输出每行三列（空格分隔，首列右对齐）：
  *   PID  NAME  RSS(KB)
  * 表头行 PID/NAME/RSS 与非数字开头的行一律跳过。
+ *
+ * ===== 为什么不再用 grep 前缀过滤 =====
+ *
+ * 早期版本用 `grep -E 'com\.|org\.|me\.|bin\.|top\.|hello\.'` 过滤，实测会漏掉三类进程：
+ *   1. 非 com./org. 前缀的第三方，如 xiaote.AnQuan、shizuku_server、rikka.appops；
+ *   2. 系统原生进程，如 system_server、surfaceflinger、zygote64、netd、installd；
+ *   3. 全部 android.hardware.* HAL 进程与 android.ext.services。
+ * 同时 head -40 会把真实占用榜上靠前的进程挤掉。
+ *
+ * 现在不做任何前缀过滤，只按 RSS 降序取前 80，保证覆盖完整。
+ * 进程名不是包名的行（system_server 等）由界面层 fillAppInfo 标记为未知应用，
+ * 只列出、不提供操作入口。
  */
 public final class ProcessScanner {
 
-    /** 与需求一致的过滤/排序管道 */
+    /** 全量进程，按常驻内存降序取前 80；不做包名前缀过滤 */
     private static final String CMD =
-            "ps -A -o PID,NAME,RSS | grep -E 'com\\.|org\\.|me\\.|bin\\.|top\\.|hello\\.' "
-            + "| sort -k3 -n -r | head -40";
+            "ps -A -o PID,NAME,RSS | sort -k3 -n -r | head -80";
 
     private ProcessScanner() {}
 

@@ -55,6 +55,14 @@ public class ProcessManagerActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private volatile boolean loading = false;
 
+    /** 进程类型过滤：0=全部 1=用户 2=系统 */
+    private int filterType = 0;
+    private static final String[] FILTER_NAMES = {"全部", "用户", "系统"};
+
+    /** 扫描得到的完整进程列表（未过滤），items 是过滤后用于展示的 */
+    private final List<ProcessItem> allItems = new ArrayList<ProcessItem>();
+    private Button filterBtn;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -95,6 +103,16 @@ public class ProcessManagerActivity extends Activity {
             public void onClick(View v) { refresh(); }
         });
         root.addView(refreshBtn, new LinearLayout.LayoutParams(-1, -2));
+
+        filterBtn = new Button(this);
+        filterBtn.setText("进程类型：全部");
+        filterBtn.setTextSize(14);
+        filterBtn.setAllCaps(false);
+        filterBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { showFilterMenu(); }
+        });
+        root.addView(filterBtn, new LinearLayout.LayoutParams(-1, -2));
 
         listView = new ListView(this);
         listView.setDividerHeight(1);
@@ -145,6 +163,40 @@ public class ProcessManagerActivity extends Activity {
         });
     }
 
+    /** 按 filterType 把 allItems 过滤进 items（0=全部 1=用户 2=系统） */
+    private void applyFilter() {
+        items.clear();
+        for (ProcessItem it : allItems) {
+            if (it == null) continue;
+            if (filterType == 1 && it.isSystem) continue;      // 只要用户应用
+            if (filterType == 2 && !it.isSystem) continue;     // 只要系统应用
+            items.add(it);
+        }
+        if (adapter != null) adapter.notifyDataSetChanged();
+        if (statusView != null) {
+            statusView.setText(items.isEmpty()
+                    ? getString(R.string.pm_empty)
+                    : getString(R.string.pm_loaded, items.size()));
+        }
+    }
+
+    /** 进程类型菜单：全部 / 用户 / 系统 */
+    private void showFilterMenu() {
+        new AlertDialog.Builder(this)
+                .setTitle("进程类型")
+                .setSingleChoiceItems(FILTER_NAMES, filterType, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        filterType = which;
+                        if (filterBtn != null) filterBtn.setText("进程类型：" + FILTER_NAMES[which]);
+                        applyFilter();
+                        dialog.dismiss();
+                    }
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
     /** 后台扫描进程，回到主线程刷新列表 */
     private void refresh() {
         if (loading) return;
@@ -160,40 +212,57 @@ public class ProcessManagerActivity extends Activity {
             @Override
             public void run() {
                 final List<ProcessItem> list = ProcessScanner.scan();
-                // 填充可读应用名与系统应用标记（跨进程查询，放工作线程）
+                // 填充可读应用名与系统应用标记（跨进程查询，放工作线程），
+                // 同时屏蔽本应用自身进程（xiaote.AnQuan / xiaote.AnQuan:xxx），
+                // 避免误操作自己。
+                final String selfPkg = getPackageName();
+                final List<ProcessItem> kept = new ArrayList<ProcessItem>();
                 for (ProcessItem it : list) {
+                    if (it == null || it.name == null) continue;
+                    if (it.name.equals(selfPkg) || it.name.startsWith(selfPkg + ":")) continue;
                     fillAppInfo(it);
+                    kept.add(it);
                 }
                 handler.post(new Runnable() {
                     @Override
                     public void run() {
                         loading = false;
-                        items.clear();
-                        items.addAll(list);
-                        adapter.notifyDataSetChanged();
-                        statusView.setText(items.isEmpty()
-                                ? getString(R.string.pm_empty)
-                                : getString(R.string.pm_loaded, items.size()));
+                        allItems.clear();
+                        allItems.addAll(kept);
+                        applyFilter();
                     }
                 });
             }
         }, "pm-scan").start();
     }
 
-    /** 取应用名并判定系统应用 / 系统界面 */
+    /**
+     * 取应用名并判定系统应用 / 系统界面。
+     *
+     * 关键：查不到 ApplicationInfo 时必须按「系统/未知」保守处理。
+     * 早期版本这里 catch 里写 isSystem = false，导致 system_server、
+     * surfaceflinger、shizuku_server 这类进程名不是包名的原生进程被当成
+     * 普通第三方应用，不弹二次确认就给「打开 / 强制停止」菜单，
+     * 有误操作风险。现在未知进程一律标记 isSystem=true + isUnknown=true，
+     * 只列出、可查看，操作前必须二次确认。
+     */
     private void fillAppInfo(ProcessItem it) {
         if (it == null) return;
         String pkg = it.packageName;
         if (pkg == null || pkg.isEmpty()) return;
         it.isSystemUi = SYSTEM_UI_PKG.equals(pkg);
+        it.isUnknown = false;
         try {
             ApplicationInfo ai = pm.getApplicationInfo(pkg, 0);
             it.appName = pm.getApplicationLabel(ai).toString();
             it.isSystem = (ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0
                     || (ai.flags & ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0;
         } catch (Exception e) {
+            // 查不到应用信息：进程名不是已安装包名（system_server、surfaceflinger、
+            // shizuku_server、zygote64、HAL 进程等）。按未知处理，视为系统级，禁止直接操作。
             it.appName = "";
-            it.isSystem = false;
+            it.isSystem = true;
+            it.isUnknown = true;
         }
         // 系统界面必然是系统应用
         if (it.isSystemUi) it.isSystem = true;
@@ -219,9 +288,11 @@ public class ProcessManagerActivity extends Activity {
                 getString(R.string.pm_open),
                 getString(R.string.pm_stop)
         };
+        String tag = "";
+        if (it.isUnknown) tag = "\n[未知进程·按系统级处理]";
+        else if (it.isSystem) tag = "\n" + getString(R.string.pm_system_tag);
         new AlertDialog.Builder(this)
-                .setTitle(label + "\n" + it.name + "  (PID " + it.pid + ")"
-                        + (it.isSystem ? "\n" + getString(R.string.pm_system_tag) : ""))
+                .setTitle(label + "\n" + it.name + "  (PID " + it.pid + ")" + tag)
                 .setItems(actions, new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
@@ -346,6 +417,7 @@ public class ProcessManagerActivity extends Activity {
             TextView nameView = new TextView(ProcessManagerActivity.this);
             String title = (it.appName == null || it.appName.isEmpty()) ? it.name : it.appName;
             if (it.isSystemUi) title = title + "  " + getString(R.string.pm_systemui_tag);
+            else if (it.isUnknown) title = title + "  [未知·系统级]";
             else if (it.isSystem) title = title + "  " + getString(R.string.pm_system_tag);
             nameView.setText(title);
             nameView.setTextSize(15);

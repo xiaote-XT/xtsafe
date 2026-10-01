@@ -34,13 +34,19 @@ public class ForceTopAlarmReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         try {
+            // 多入口之一：拉起核心常驻服务（不依赖无障碍：音量阈值防护 /
+            // 阻止卸载周期任务 / 无障碍掉线兜底）。即使无障碍被关闭、
+            // 开机广播被系统拦下，本闹钟 60 秒一次也能把核心防护拉回来。
+            XTSafeCoreService.ensureStarted(context);
+
             boolean forceTop = context.getSharedPreferences("dot_config", Context.MODE_PRIVATE)
                     .getBoolean("force_top", true);
             if (forceTop) {
                 checkAndRecover(context);
-                schedule(context); // 开启状态下续订下一个闹钟
             }
-            // force_top 关闭：不再续订，闹钟自然消亡
+            // 始终续订下一个闹钟：force_top 只控制是否做无障碍拉活，
+            // 闹钟本身要长期存活以兜底核心服务。
+            schedule(context);
         } catch (Exception ignored) {}
     }
 

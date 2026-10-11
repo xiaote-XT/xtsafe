@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>更新日志 - 星特安全</title>
+<!-- 界面风格统一跟随主页，本页不提供切换入口 -->
+<link rel="stylesheet" href="lib/xtui/xtui.css">
+<script src="lib/xtui/xtui.js"></script>
+</head>
+<body>
+
+<div class="xtui-header">
+  <div class="xtui-title">更新日志</div>
+</div>
+
+<div id="app"></div>
+
+<script>
+function build() {
+  var app = document.getElementById('app');
+  app.innerHTML = '<div class="xtui-card">'
+    + '<div class="xtui-section">日志</div>'
+    + '<div class="xtui-mono" id="log">加载中…</div>'
+    + '</div>'
+    + '<div class="xtui-card">'
+    + XTUI.btnHtml('copy', '复制日志')
+    + XTUI.btnHtml('back', '返回', 'filled')
+    + '</div>';
+
+  var copy = document.getElementById('copy');
+  if (copy) copy.addEventListener('click', function () { XT.copyLog(); });
+  var back = document.getElementById('back');
+  if (back) back.addEventListener('click', function () { XT.close(); });
+}
+
+function setLog(t) {
+  var node = document.getElementById('log');
+  if (!node) return;
+  node.textContent = (t && t.length) ? t : '获取失败';
+}
+
+/* 原生拉取完成后回调；也支持主动重拉 */
+window.XTSetLog = setLog;
+window.XTRefresh = function () {
+  try { setLog(XT.getLogText()); } catch (e) {}
+};
+
+build();
+try { setLog(XT.getLogText()); } catch (e) {}
+</script>
+</body>
+</html>

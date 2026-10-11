@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>主动防护 - 星特安全</title>
+<!-- 公共样式与脚本：结构与业务写在页面，样式/控件交给 xtui -->
+<link rel="stylesheet" href="lib/xtui/xtui.css">
+<script src="lib/xtui/xtui.js"></script>
+</head>
+<body>
+
+<div class="xtui-header">
+  <div class="xtui-title">主动防护</div>
+</div>
+
+<div id="app"></div>
+
+<script>
+var SCHEMA = [
+  { title: '基础防护', items: [
+    { type: 'switch', key: 'block_virus', label: '禁止安装病毒' },
+    { type: 'switch', key: 'notify_install', label: '安装病毒通知提醒' },
+    { type: 'switch', key: 'force_stop_virus', label: '唤起列表时强制停止病毒' },
+    { type: 'switch', key: 'manage_install', label: '新安装应用管控提示' },
+    { type: 'switch', key: 'auto_scan_install', label: '自动检测新安装应用' },
+    { type: 'switch', key: 'smart_risk_text_notify', label: '智能识别风险文字并提示' },
+    { type: 'switch', key: 'block_overlay', label: '自动拦截全屏覆盖应用' },
+    { type: 'switch', key: 'acc_keep_alive', label: '无障碍保活',
+      tip: '无障碍被系统或第三方关闭后，按下面频率检测并写回服务列表拉活。最低 0.1 秒一次。' },
+    { type: 'slider', key: 'acc_keep_alive_ticks', min: 1, max: 72000, step: 1,
+      fmt: function (v) { return '保活检查频率：' + XTUI.fmtInterval(v); } }
+  ] },
+  { title: '音量防护', items: [
+    { type: 'switch', key: 'volume_protect', label: '防音量恶意修改' },
+    { type: 'slider', key: 'volume_threshold', min: 0, max: 100, step: 1,
+      fmt: function (v) { return '音量阈值：' + v; } },
+    { type: 'slider', key: 'volume_check_interval', min: 1, max: 600, step: 1,
+      fmt: function (v) { return '检查频率：' + XTUI.fmtInterval(v); } },
+    { type: 'switch', key: 'volume_threshold_action', label: '音量超阈值执行安全操作' },
+    { type: 'switch', key: 'volume_key_action', label: '按十下音量-触发安全操作' },
+    { type: 'switch', key: 'time_rollback_action', label: '时间被回拨时触发安全操作',
+      tip: '系统时间被往前调（回拨）超过下面阈值时，执行「选择操作」里勾选的安全操作；只往回退触发，正常走时不触发。' },
+    { type: 'slider', key: 'time_rollback_minutes', min: 1, max: 43200, step: 1,
+      fmt: function (v) { return '回拨阈值：' + XTUI.fmtInterval(v * 600); } },
+    { type: 'checks', key: 'safe_actions', label: '选择操作（可多选）', items: [
+      { value: 1, label: '强制停止所有应用' },
+      { value: 2, label: '关闭所有应用无障碍' },
+      { value: 4, label: '冻结拥有无障碍权限应用' },
+      { value: 8, label: '唤起卸载列表' },
+      { value: 16, label: '关闭锁屏密码' }
+    ] }
+  ] },
+  { title: '阻止卸载', items: [
+    { type: 'switch', key: 'block_other_uninstall', label: '阻止卸载',
+      tip: '阻止所有应用被卸载，防止恶意应用卸载游戏。与下方互斥。' },
+    { type: 'slider', key: 'block_other_uninstall_ticks', min: 1, max: 72000, step: 1,
+      fmt: function (v) { return '检查频率：' + XTUI.fmtInterval(v); } },
+    { type: 'switch', key: 'unblock_other_blocked', label: '阻止阻止卸载',
+      tip: '阻止一些应用拦截卸载（不含无障碍自动点击拦截），避免恶意应用无法被卸载。与上方互斥。' },
+    { type: 'slider', key: 'unblock_other_blocked_ticks', min: 1, max: 72000, step: 1,
+      fmt: function (v) { return '检查频率：' + XTUI.fmtInterval(v); } }
+  ] },
+  { title: '自定义病毒包名', items: [
+    { type: 'text', key: 'virus_packages', rows: 4, saveLabel: '保存' }
+  ] },
+  { title: '界面', items: [
+    { type: 'button', key: 'back', label: '返回' }
+  ] }
+];
+
+/* 状态缓存：getState 一次拉全，apply 回填 */
+var STATE = {};
+
+function loadState() {
+  try { STATE = JSON.parse(XT.getState()); } catch (e) { return; }
+  STATE.virus_packages = XT.getVirusPackages();
+  XTUI.apply(SCHEMA, STATE);
+  refreshAccModeBtn();
+}
+
+/* 保活模式按钮文字跟随当前模式，按钮本身不带状态，靠这里刷 */
+function refreshAccModeBtn() {
+  var b = document.getElementById('acc_keep_alive_mode');
+  if (!b) return;
+  b.textContent = (STATE.acc_keep_alive_mode === 'force')
+    ? '保活模式：强制保活' : '保活模式：自动恢复';
+}
+
+/* 阻止卸载两项互斥，原生写完会回推前端，这里统一重拉 */
+function onSwitch(key, val) {
+  if (key === 'block_other_uninstall') {
+    XT.applyBlockUninstall(true, val);
+  } else if (key === 'unblock_other_blocked') {
+    XT.applyBlockUninstall(false, val);
+  } else {
+    XT.setBool(key, val);
+    STATE[key] = val;
+  }
+}
+
+function onSlider(key, val) {
+  XT.setInt(key, val);
+  STATE[key] = val;
+}
+
+function onMask(key, mask) {
+  XT.setSafeActionMask(mask);
+  STATE[key] = mask;
+}
+
+function onSave(key, text) {
+  XT.saveVirusPackages(text);
+  STATE[key] = text;
+  XT.toast('已保存');
+}
+
+function onButton(key) {
+  if (key === 'back') { XT.close(); return; }
+  if (key === 'acc_keep_alive_mode') {
+    XTUI.sheet({
+      title: '无障碍保活模式',
+      desc: '选择保活方式',
+      items: [
+        { key: 'auto', label: '自动恢复', sub: '检测到掉线才重新开启' },
+        { key: 'force', label: '强制保活', sub: '每轮无条件写回开启' }
+      ],
+      onPick: function (k) {
+        if (k !== 'auto' && k !== 'force') return;
+        XT.setAccKeepAliveMode(k);
+        STATE.acc_keep_alive_mode = k;
+        refreshAccModeBtn();
+        XTUI.closeSheet();
+      }
+    });
+  }
+}
+
+XTUI.render(document.getElementById('app'), SCHEMA, {
+  onSwitch: onSwitch,
+  onSlider: onSlider,
+  onMask: onMask,
+  onSave: onSave,
+  onButton: onButton
+});
+
+/* 原生侧批量执行完成 / 互斥回读后会调这个 */
+window.XTRefresh = loadState;
+loadState();
+</script>
+</body>
+</html>

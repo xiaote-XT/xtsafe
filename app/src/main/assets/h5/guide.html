@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>使用指南 - 星特安全</title>
+<link rel="stylesheet" href="lib/xtui/xtui.css">
+<script src="lib/xtui/xtui.js"></script>
+</head>
+<body>
+
+<div class="xtui-header">
+  <div class="xtui-title">使用指南</div>
+</div>
+
+<div id="app"></div>
+
+<script>
+/* 正文全部来自原生 R.string，页面不硬编码文案，两种界面永远同源 */
+function render() {
+  var sections;
+  try { sections = JSON.parse(XT.getSections()); } catch (e) { return; }
+  if (!sections || !sections.length) return;
+
+  var inner = '';
+  for (var i = 0; i < sections.length; i++) {
+    inner += '<div class="xtui-entry-title">' + (i + 1) + '. '
+      + XTUI.esc(sections[i].title) + '</div>'
+      + '<div class="xtui-entry-body">' + XTUI.esc(sections[i].body) + '</div>';
+  }
+  inner += XTUI.btnHtml('back', '返回', 'filled');
+
+  document.getElementById('app').innerHTML = '<div class="xtui-card">' + inner + '</div>';
+  var b = document.getElementById('back');
+  if (b) b.addEventListener('click', function () { XT.close(); });
+}
+
+window.XTRefresh = render;
+render();
+</script>
+</body>
+</html>

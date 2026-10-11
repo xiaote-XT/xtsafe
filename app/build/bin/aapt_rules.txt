@@ -1,0 +1,147 @@
+# view AndroidManifest.xml #generated:257
+-keep class rikka.shizuku.ShizukuProvider { <init>(...); }
+
+# view AndroidManifest.xml #generated:195
+-keep class xiaote.AnQuan.AccessibilityManagerActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:367
+-keep class xiaote.AnQuan.AntiLockIME { <init>(...); }
+
+# view AndroidManifest.xml #generated:73
+-keep class xiaote.AnQuan.App { <init>(...); }
+
+# view AndroidManifest.xml #generated:269
+-keep class xiaote.AnQuan.BootReceiver { <init>(...); }
+
+# view AndroidManifest.xml #generated:385
+-keep class xiaote.AnQuan.DeviceAdmin { <init>(...); }
+
+# view AndroidManifest.xml #generated:323
+-keep class xiaote.AnQuan.DeviceOwnerActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:352
+-keep class xiaote.AnQuan.DhizukuActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:200
+-keep class xiaote.AnQuan.FloatingButtonSettingsActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:282
+-keep class xiaote.AnQuan.ForceTopAlarmReceiver { <init>(...); }
+
+# view AndroidManifest.xml #generated:141
+-keep class xiaote.AnQuan.H5AccActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:165
+-keep class xiaote.AnQuan.H5DeviceOwnerActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:159
+-keep class xiaote.AnQuan.H5DhizukuActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:117
+-keep class xiaote.AnQuan.H5EnhanceActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:135
+-keep class xiaote.AnQuan.H5FloatActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:123
+-keep class xiaote.AnQuan.H5GuideActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:171
+-keep class xiaote.AnQuan.H5KillAdActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:147
+-keep class xiaote.AnQuan.H5ListActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:99
+-keep class xiaote.AnQuan.H5MainActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:111
+-keep class xiaote.AnQuan.H5PermissionActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:177
+-keep class xiaote.AnQuan.H5ProcessActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:105
+-keep class xiaote.AnQuan.H5ProtectionActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:189
+-keep class xiaote.AnQuan.H5RuleManagerActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:183
+-keep class xiaote.AnQuan.H5ScanActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:153
+-keep class xiaote.AnQuan.H5ShizukuActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:129
+-keep class xiaote.AnQuan.H5UpdateLogActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:286
+-keep class xiaote.AnQuan.HelperWakeReceiver { <init>(...); }
+
+# view AndroidManifest.xml #generated:225
+-keep class xiaote.AnQuan.KeepAliveActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:357
+-keep class xiaote.AnQuan.ListManagerActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:81
+-keep class xiaote.AnQuan.MainActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:215
+-keep class xiaote.AnQuan.MoreToolsActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:230
+-keep class xiaote.AnQuan.PasswordLockActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:328
+-keep class xiaote.AnQuan.PermissionManager.Activity { <init>(...); }
+
+# view AndroidManifest.xml #generated:333
+-keep class xiaote.AnQuan.PermissionManager.EnhanceActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:339
+-keep class xiaote.AnQuan.PermissionManager.OneKeyAuthActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:205
+-keep class xiaote.AnQuan.ProtectionSettingsActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:461
+-keep class xiaote.AnQuan.RuleManagerActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:471
+-keep class xiaote.AnQuan.ScanResultDialogActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:403
+-keep class xiaote.AnQuan.SecurityScanActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:220
+-keep class xiaote.AnQuan.Setting.SettingActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:346
+-keep class xiaote.AnQuan.ShizukuActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:362
+-keep class xiaote.AnQuan.SmallTool.AppPicker.AppPickerActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:313
+-keep class xiaote.AnQuan.SmallTool.KillAd.KillAdActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:299
+-keep class xiaote.AnQuan.SmallTool.KillAd.KillAdVpnService { <init>(...); }
+
+# view AndroidManifest.xml #generated:318
+-keep class xiaote.AnQuan.SmallTool.ProcessManager.ProcessManagerActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:466
+-keep class xiaote.AnQuan.UpdateLogActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:210
+-keep class xiaote.AnQuan.UsageGuideActivity { <init>(...); }
+
+# view AndroidManifest.xml #generated:253
+-keep class xiaote.AnQuan.XTSafeCoreService { <init>(...); }
+
+# view AndroidManifest.xml #generated:235
+-keep class xiaote.AnQuan.XTSafeMainService { <init>(...); }
+

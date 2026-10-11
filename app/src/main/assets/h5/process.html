@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>进程管理 - 星特安全</title>
+<!-- 界面风格统一跟随主页，本页不提供切换入口 -->
+<link rel="stylesheet" href="lib/xtui/xtui.css">
+<script src="lib/xtui/xtui.js"></script>
+<style>
+/* 列表型页面：仅补本页专属结构，颜色/圆角/文字层级全部走 xtui 变量 */
+.pm-choices { display: flex; gap: 8px; margin-bottom: 12px; }
+.pm-choice {
+  flex: 1;
+  padding: 10px 4px;
+  background: var(--card);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 14px;
+  transition: color 0.2s, border-color 0.2s, transform 0.12s ease;
+}
+.pm-choice.on { color: var(--primary); border-color: var(--primary); font-weight: 600; }
+.pm-choice:active { transform: scale(0.97); }
+.pm-item {
+  padding: 11px 4px;
+  border-bottom: 1px solid var(--border);
+  transition: background-color 0.15s;
+}
+.pm-item:last-child { border-bottom: none; }
+.pm-item:active { background: rgba(255, 106, 0, 0.08); }
+.pm-name { font-size: 15px; font-weight: 600; color: var(--text); }
+.pm-name.sys { color: var(--warn); }
+.pm-sub {
+  font-size: 11px;
+  color: var(--link);
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+html.xtui-mdui .pm-choice {
+  background: rgb(var(--mdui-color-surface-container-high));
+  border: none;
+  border-radius: var(--mdui-shape-corner-full);
+  color: rgb(var(--mdui-color-on-surface-variant));
+}
+html.xtui-mdui .pm-choice.on {
+  background: rgb(var(--mdui-color-secondary-container));
+  color: rgb(var(--mdui-color-on-secondary-container));
+}
+html.xtui-mdui .pm-item { border-bottom-color: rgb(var(--mdui-color-outline-variant)); }
+html.xtui-mdui .pm-name { color: rgb(var(--mdui-color-on-surface)); font-weight: 500; }
+html.xtui-mdui .pm-name.sys { color: rgb(var(--mdui-color-error)); }
+html.xtui-mdui .pm-sub { color: rgb(var(--mdui-color-on-surface-variant)); }
+</style>
+</head>
+<body>
+
+<div class="xtui-header">
+  <div class="xtui-title">进程管理</div>
+</div>
+
+<div id="app"></div>
+<script>
+var FILTERS = ['全部', '用户', '系统'];
+var filter = 0;
+var items = [];
+
+function el(id) { return document.getElementById(id); }
+
+function build() {
+  document.getElementById('app').innerHTML =
+    '<div class="xtui-card">'
+    + '<div class="xtui-tip-center">通过 Shizuku 扫描后台进程，按常驻内存降序排列</div>'
+    + '<div class="xtui-status" id="status">加载中…</div>'
+    + XTUI.btnHtml('refreshBtn', '刷新')
+    + '<div class="pm-choices" id="filters"></div>'
+    + '<div id="list"></div>'
+    + '</div>'
+    + '<div class="xtui-card">' + XTUI.btnHtml('back', '返回', 'filled') + '</div>';
+
+  el('refreshBtn').addEventListener('click', function () { XT.refresh(); load(); });
+  el('back').addEventListener('click', function () { XT.close(); });
+  buildFilters();
+}
+
+function buildFilters() {
+  var box = el('filters');
+  if (!box) return;
+  box.innerHTML = '';
+  for (var i = 0; i < FILTERS.length; i++) {
+    var b = document.createElement('button');
+    b.className = (i === filter) ? 'pm-choice on' : 'pm-choice';
+    b.textContent = FILTERS[i];
+    b.setAttribute('data-f', String(i));
+    b.addEventListener('click', function () {
+      filter = parseInt(this.getAttribute('data-f'), 10);
+      buildFilters();
+      load();
+    });
+    box.appendChild(b);
+  }
+}
+
+function load() {
+  var available = false;
+  try { available = XT.isAvailable(); } catch (e) {}
+  if (!available) {
+    var s0 = el('status');
+    if (s0) s0.textContent = '需要 Shizuku 权限';
+    var l0 = el('list');
+    if (l0) l0.innerHTML = '<div class="xtui-empty">需要 Shizuku 权限</div>';
+    return;
+  }
+
+  var scanning = false;
+  try { scanning = XT.isScanning(); } catch (e) {}
+  var scanned = false;
+  try { scanned = XT.hasScanned(); } catch (e) {}
+
+  try { items = JSON.parse(XT.getList(filter)); } catch (e) { items = []; }
+
+  var status = el('status');
+  if (status) {
+    if (scanning && !scanned) status.textContent = '正在扫描…';
+    else status.textContent = items.length ? ('已加载 ' + items.length + ' 个进程') : '暂无进程';
+  }
+  render();
+}
+
+function render() {
+  var box = el('list');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!items.length) {
+    var e = document.createElement('div');
+    e.className = 'xtui-empty';
+    e.textContent = '暂无进程';
+    box.appendChild(e);
+    return;
+  }
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    var d = document.createElement('div');
+    d.className = 'pm-item';
+    d.setAttribute('data-i', String(i));
+    var title = (it.appName && it.appName.length) ? it.appName : it.name;
+    if (it.isSystemUi) title += '  [系统界面·仅查看]';
+    else if (it.isUnknown) title += '  [未知·系统级]';
+    else if (it.isSystem) title += '  [系统]';
+    var sub = it.name + '\nPID ' + it.pid + '  |  内存 ' + it.memText;
+    if (it.isSystemUi) sub += '\n系统界面仅列出，不提供操作';
+    d.innerHTML = '<div class="pm-name' + (it.isSystem ? ' sys' : '') + '">'
+      + XTUI.esc(title) + '</div>'
+      + '<div class="pm-sub">' + XTUI.esc(sub) + '</div>';
+    d.addEventListener('click', onItem);
+    box.appendChild(d);
+  }
+}
+
+/* 统一走 xtui 的带动画上拉菜单（滑入/滑出 + 遮罩淡入） */
+function overlay(html) {
+  XTUI.openSheetHtml(html);
+}
+
+function closeSheet() {
+  XTUI.closeSheet();
+}
+
+function onItem() {
+  var i = parseInt(this.getAttribute('data-i'), 10);
+  var it = items[i];
+  if (!it) return;
+
+  if (it.isSystemUi) {
+    overlay('<div class="xtui-section">系统界面</div>'
+      + '<div class="xtui-tip-center">' + XTUI.esc(it.name) + '</div>'
+      + '<div class="xtui-tip-center">PID ' + it.pid + '  内存 ' + XTUI.esc(it.memText) + '</div>'
+      + '<div class="xtui-tip-center">系统界面仅列出，不提供任何操作</div>'
+      + XTUI.btnHtml('doClose', '关闭', 'filled'));
+    el('doClose').addEventListener('click', closeSheet);
+    return;
+  }
+
+  var label = (it.appName && it.appName.length) ? it.appName : it.name;
+  var tag = '';
+  if (it.isUnknown) tag = '<div class="xtui-tip-center">未知进程·按系统级处理</div>';
+  else if (it.isSystem) tag = '<div class="xtui-tip-center">系统应用</div>';
+
+  overlay('<div class="xtui-section">' + XTUI.esc(label) + '</div>'
+    + '<div class="xtui-tip-center">' + XTUI.esc(it.name) + '  (PID ' + it.pid + ')</div>'
+    + tag
+    + XTUI.btnHtml('doOpen', '打开应用', 'filled')
+    + XTUI.btnHtml('doStop', '强制停止')
+    + XTUI.btnHtml('doCancel', '取消'));
+
+  el('doCancel').addEventListener('click', closeSheet);
+  el('doOpen').addEventListener('click', function () {
+    if (it.isSystem || it.isUnknown) confirmSystem(it, true);
+    else { closeSheet(); XT.openApp(it.pkg); }
+  });
+  el('doStop').addEventListener('click', function () {
+    if (it.isSystem || it.isUnknown) confirmSystem(it, false);
+    else { closeSheet(); XT.stopApp(it.pkg); }
+  });
+}
+
+function confirmSystem(it, open) {
+  var act = open ? '打开应用' : '强制停止';
+  overlay('<div class="xtui-section">系统应用确认</div>'
+    + '<div class="xtui-tip-center">' + XTUI.esc(it.name) + '</div>'
+    + '<div class="xtui-tip-center">即将对系统级进程执行「' + act + '」，可能导致系统异常</div>'
+    + XTUI.btnHtml('doConfirm', '确定', 'filled')
+    + XTUI.btnHtml('doCancel2', '取消'));
+  el('doCancel2').addEventListener('click', closeSheet);
+  el('doConfirm').addEventListener('click', function () {
+    closeSheet();
+    if (open) XT.openApp(it.pkg);
+    else XT.stopApp(it.pkg);
+  });
+}
+
+window.XTRefresh = load;
+build();
+XT.refresh();
+load();
+</script>
+</body>
+</html>

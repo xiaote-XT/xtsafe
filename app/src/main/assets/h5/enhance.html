@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>权限增强 - 星特安全</title>
+<!-- 界面风格统一跟随主页，本页不提供切换入口 -->
+<link rel="stylesheet" href="lib/xtui/xtui.css">
+<script src="lib/xtui/xtui.js"></script>
+</head>
+<body>
+
+<div class="xtui-header">
+  <div class="xtui-title">权限增强</div>
+</div>
+
+<div id="app"></div>
+
+<script>
+var SCHEMA = [
+  { title: '提权方案', items: [
+    { type: 'note', text: '按需选择其中一种或多种' },
+    { type: 'button', key: 'shizuku', label: 'Shizuku 增强' },
+    { type: 'button', key: 'dhizuku', label: 'Dhizuku 增强' },
+    { type: 'button', key: 'deviceowner', label: 'Device Owner 增强' }
+  ] },
+  { title: '界面', items: [
+    { type: 'button', key: 'back', label: '返回' }
+  ] }
+];
+
+function onButton(key) {
+  if (key === 'back') XT.close();
+  else XT.openPage(key);
+}
+
+XTUI.render(document.getElementById('app'), SCHEMA, {
+  onSwitch: function () {},
+  onSlider: function () {},
+  onMask: function () {},
+  onSave: function () {},
+  onButton: onButton
+});
+</script>
+</body>
+</html>

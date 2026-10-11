@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">XT Safe</string>
+    <string name="accessibility_desc">XT Safe accessibility service, used to pop up an uninstall list when locked by malware, helping to uninstall malicious apps.</string>
+    <string name="main_title">XT Safe</string>
+    <string name="main_info">1.Enable accessibility service by clicking the Accessibility Settings button. If denied, go to app details and tap the three dots in the top right corner to cancel, or join the QQ group for help.\n2.Activate and authorize Shizuku. If you don\'t know how, search for tutorials on Bilibili or join the QQ group.\n3.It is recommended to enable Force on Top. After XT Safe runs, choose an On-Top Mode (Restart Service / Highest Priority / Mixed) in Floating Button Settings, and test the wake button. If abnormal, join the QQ group for help.\n4.XT Safe only reduces the risk of being locked. No tool can guarantee 100% security.\n5.XT Safe does not prevent factory reset or administrator lock (locking by changing your phone password).</string>
+    <string name="btn_shizuku">Grant Shizuku</string>
+    <string name="btn_accessibility">Accessibility Settings</string>
+    <string name="btn_overlay">Overlay Permission</string>
+    <string name="btn_more">More Resources</string>
+    <string name="btn_opensource">Open Source</string>
+    <string name="btn_qq_group">Join QQ Group</string>
+    <string name="section_settings">━━━ Floating Button Settings ━━━</string>
+    <string name="label_width">Width</string>
+    <string name="label_height">Height</string>
+    <string name="label_alpha">Opacity</string>
+    <string name="label_color">Color</string>
+    <string name="label_position">Position</string>
+    <string name="label_force">Force on top (restart when not in list)</string>
+    <string name="label_interval">Interval</string>
+    <string name="tip_height">0 = Auto match status bar height</string>
+    <string name="tip_alpha">0=Transparent 255=Opaque  Default 140</string>
+    <string name="tip_interval">Force on top interval (5-60 seconds)</string>
+    <string name="footer_settings">Settings apply automatically</string>
+    <string name="force_on">Enabled</string>
+    <string name="force_off">Disabled</string>
+    <string name="toast_shizuku_ok">Granted</string>
+    <string name="toast_shizuku_no">Shizuku not running</string>
+    <string name="toast_shizuku_norun">Shizuku not running</string>
+    <string name="toast_force_on">Force on top enabled</string>
+    <string name="toast_force_off">Force on top disabled</string>
+    <string name="toast_color_set">Color set</string>
+    <string name="open_source_url">https://github.com/xiaote-XT/xtsafe</string>
+
+    <!-- Uninstall list -->
+    <string name="uninstall_title">Select to Uninstall</string>
+    <string name="search_hint">Search app name or package...</string>
+    <string name="loading">Loading...</string>
+    <string name="confirm_uninstall">Confirm Uninstall</string>
+    <string name="ok_uninstall">Uninstall</string>
+    <string name="cancel">Cancel</string>
+    <string name="hide">✕ Hide</string>
+    <string name="refresh_list">Refresh</string>
+    <string name="back_home">Home</string>
+    <string name="count_format">%1$d apps  |  %2$s  |  Long press to disable</string>
+    <string name="shizuku_silent">Shizuku silent uninstall</string>
+    <string name="system_uninstall">System uninstall page</string>
+    <string name="uninstall_sent">Shizuku uninstall command sent</string>
+    <string name="uninstall_fail">Shizuku uninstall failed, using system uninstall</string>
+    <string name="uninstall_error">Cannot start uninstall</string>
+    <string name="list_error">Failed to get app list</string>
+    <string name="no_apps">No third-party apps to uninstall</string>
+    <string name="no_accessibility">This app has no accessibility service enabled</string>
+    <string name="disabled_accessibility">Accessibility service disabled</string>
+    <string name="shizuku_no_perm">Shizuku not authorized, cannot disable</string>
+    <string name="op_failed">Operation failed</string>
+    <string name="dot_create_fail">Failed to create status bar button</string>
+    <string name="list_show_fail">Failed to show list</string>
+    <string name="confirm_show_fail">Failed to show confirmation</string>
+    <string name="notify_ready">Ready, tap the top block to show uninstall list</string>
+    <string name="switch_block_virus">Block virus installation</string>
+    <string name="switch_notify_install">Notify on virus install (ask to uninstall)</string>
+    <string name="switch_force_stop_virus">Force stop virus apps on list open</string>
+    <string name="switch_manage_install">Ask to manage new apps</string>
+    <string name="guide_title">Usage Guide</string>
+    <string name="guide_back">Done</string>
+    <string name="guide_section1_title">Floating Button Settings</string>
+    <string name="guide_section1_body">Customize the status bar floating button appearance and behavior:\n• Width/Height: Adjust size (0 = auto match status bar height)\n• Opacity: 0~255, default 140\n• Color: 6 preset colors\n• Position: Left/Center/Right\n• Force on Top: Periodically keep the floating button and accessibility service enabled (key anti-lock protection)\n• On-Top Mode: Restart Service (remove→re-add accessibility to rebind) / Highest Priority (periodically rebuild floating window to stay on top) / Mixed (both)\n• Interval: Check interval (5-60 seconds)</string>
+    <string name="guide_section2_title">Active Protection</string>
+    <string name="guide_section2_body">Virus app blocking and install management:\n• Block virus installation: Auto-disable/uninstall via admin/Shizuku when virus package detected\n• Notify on virus install: Send notification asking to uninstall\n• Force stop virus on list open: Auto force-stop virus apps when uninstall list opens\n• Ask to manage new apps: Notification when any new app installed\n• Custom virus packages: Add custom virus package names (comma separated)</string>
+    <string name="guide_section3_title">Accessibility Management</string>
+    <string name="guide_section3_body">Fine-grained management for apps with accessibility service (batch mode supported):\n• Forbidden: Force close accessibility, keep blocking\n• Allow: Keep accessibility enabled, auto-restore if closed\n• Allow 10 minutes: Temporarily allow for 10 min, then auto-close\n• Lock Forbidden: Close accessibility when screen locks\n• Smart Management: Auto-close when entering sensitive apps (banking/payment), auto-restore when leaving; also closes on screen lock, and asks to restore via notification on unlock (auto-restore after 5s)\n• Batch: Long press or tap batch button to multi-select and set mode</string>
+    <string name="guide_section4_title">Managed List</string>
+    <string name="guide_section4_body">Managed apps differ from virus apps - they are not blocked, only monitored:\n• Shown in uninstall list with blue [Managed] marker\n• Can be filtered (tap [Managed] button)\n• Long press to remove from managed list\n• Manually add apps to managed list</string>
+    <string name="guide_section5_title">Sensitive App Management</string>
+    <string name="guide_section5_body">Manage sensitive app package list (banking/payment apps):\n• 55+ built-in banking/payment packages\n• Search and add custom packages\n• Long press to remove default packages (can be restored)\n• Smart Management mode auto-disables accessibility when entering sensitive apps</string>
+    <string name="guide_section6_title">One-Click Authorization</string>
+    <string name="guide_section6_body">One-click authorization via Shizuku:\n• Notification permission (granted via shell)\n• Enable accessibility service\n• Request battery optimization exemption\n• Open device admin settings\n• Auto-tap "OK" on battery dialog and "Enable this device admin app"</string>
+    <string name="guide_section7_title">Emergency Operations</string>
+    <string name="guide_section7_body">Available via "Emergency" button in the uninstall list:\n• Force stop all non-system apps\n• Disable all accessibility services except this app\n• Remove all device admins\n• Clear/reset lock screen password\n• Fill memory (force system to stop all apps)\n• Auto authorize (notification + accessibility + battery + admin)</string>
+    <string name="guide_section8_title">Virus Package List</string>
+    <string name="guide_section8_body">Built-in virus packages are dynamically loaded from rule files, containing 35+ known ransomware/malicious app packages. Users can add more via the custom virus package input in Active Protection.</string>
+    <string name="guide_section11_title">Volume Protection</string>
+    <string name="guide_section11_body">Volume protection switches (in Active Protection):\n• Anti volume tampering: auto set volume to 0 when over threshold\n• Volume max shows uninstall list: auto popup uninstall list when volume over threshold\n• Volume over threshold force-stop all apps: immediately force-stop all third-party apps when volume over threshold\n• Volume threshold: percentage triggering the above actions, default 80%\n• Press volume-down 10 times (within 3s) to pop up the uninstall list anytime\n• Volume changes are monitored in real time, responding even in background</string>
+    <string name="guide_section9_title">Security Scan</string>
+    <string name="guide_section9_body">App security scanning, supports installed apps and manual APK selection:\n• Permission combination detection: extract real permissions from Manifest and match dangerous combinations (e.g. INTERNET+RECEIVE_SMS+SEND_SMS may charge fees)\n• Signature MD5 detection: compare against risk signature list, detect tampered or abused signatures\n• Risk class detection: identify known malicious frameworks/injection classes (Epic, CloudMirror, SetupInfoActivity, etc.)\n• File feature detection: detect malicious SDK files (e.g. info.json containing bqm., setup_sdk_* share popups, etc.)\n• String feature detection: scan DEX for sensitive features (accessibility force-enable, screen recording, remote command, silent install/uninstall, etc.), each feature can have its own risk level\n• Virus package detection: match built-in virus package list, mark as malicious directly\n• Whitelist: package + signature MD5 double match, skip scan if fully matched\n• Whitelist signature anomaly: mark as "possibly modified" if package is whitelisted but signature mismatches</string>
+    <string name="guide_section10_title">Auto-Scan New Installs</string>
+    <string name="guide_section10_body">After enabling "Auto-scan new installs" in Active Protection, every newly installed app triggers a security scan:\n• Shows a non-dismissible silent notification during scan\n• Hides the notification automatically if no risk found\n• Pops up a notification reminder if risk found, tap to view details\n• Detection covers signatures, permission combinations, risk classes, file features, virus packages, etc.</string>
+    <string name="device_admin_desc">XT Safe device admin permission, used for anti-uninstall, force lock screen, wipe data and other security operations.</string>
+</resources>

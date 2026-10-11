@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>广告拦截 - 星特安全</title>
+<!-- 界面风格统一跟随主页，本页不提供切换入口 -->
+<link rel="stylesheet" href="lib/xtui/xtui.css">
+<script src="lib/xtui/xtui.js"></script>
+</head>
+<body>
+
+<div class="xtui-header">
+  <div class="xtui-title">广告拦截</div>
+</div>
+
+<div id="app"></div>
+
+<script>
+var SCHEMA = [
+  { title: '开关', items: [
+    { type: 'switch', key: 'main_switch', label: '启用广告拦截' },
+    { type: 'note', key: 'status', text: '已停止' },
+    { type: 'note', key: 'stats', text: '' }
+  ] },
+  { title: '暂停', items: [
+    { type: 'button', key: 'pauseBtn', label: '暂停' },
+    { type: 'note', text: '暂停后服务不退出、通知保留，可随时恢复。关闭上方开关才会完全退出。' }
+  ] },
+  { title: '规则', items: [
+    { type: 'note', key: 'rulesCount', text: '' },
+    { type: 'input', key: 'rule_url', placeholder: '规则源 .txt 链接', btnLabel: '保存' },
+    { type: 'button', key: 'updateRules', label: '立即更新规则' },
+    { type: 'note', key: 'rule_info', mono: true, text: '' }
+  ] },
+  { title: '上游 DNS', items: [
+    { type: 'input', key: 'upstream', placeholder: '223.5.5.5', btnLabel: '保存' }
+  ] },
+  { title: '自定义拦截域名', items: [
+    { type: 'note', text: '逗号 / 空格 / 换行分隔' },
+    { type: 'text', key: 'custom', rows: 4, saveLabel: '保存' }
+  ] },
+  { title: '运行日志', items: [
+    { type: 'note', key: 'log_info', mono: true, text: '' },
+    { type: 'button', key: 'clearLog', label: '清除日志' }
+  ] },
+  { title: '界面', items: [
+    { type: 'button', key: 'back', label: '返回', variant: 'filled' }
+  ] }
+];
+
+var STATE = {};
+var setting = false;
+
+function setText(id, t) {
+  var n = document.getElementById(id);
+  if (n) n.textContent = t == null ? '' : t;
+}
+
+function paint() {
+  setting = true;
+  XTUI.setChecked('main_switch', !!STATE.running);
+  setting = false;
+
+  setText('status', STATE.statusText || '已停止');
+  setText('stats', STATE.statsText || '');
+  setText('rulesCount', STATE.rulesCountText || '');
+  setText('rule_info', STATE.ruleInfoText || '');
+  setText('log_info', STATE.logInfoText || '');
+
+  var pause = document.getElementById('pauseBtn');
+  if (pause) {
+    pause.textContent = STATE.paused ? '恢复' : '暂停';
+    pause.disabled = !STATE.running;
+  }
+
+  if (document.activeElement !== document.getElementById('rule_url')) {
+    XTUI.setValue('rule_url', STATE.ruleUrl || '');
+  }
+  if (document.activeElement !== document.getElementById('upstream')) {
+    XTUI.setValue('upstream', STATE.upstream || '');
+  }
+  if (document.activeElement !== document.getElementById('custom')) {
+    XTUI.setValue('custom', STATE.customDomains || '');
+  }
+}
+
+function loadState() {
+  try { STATE = JSON.parse(XT.getState()); } catch (e) { return; }
+  paint();
+}
+
+function onSwitch(key, val) {
+  if (setting) return;
+  if (key === 'main_switch') XT.toggle(val);
+}
+
+function onSave(key, text) {
+  if (key === 'custom') XT.saveCustomDomains(text);
+}
+
+function onButton(key, value) {
+  switch (key) {
+    case 'pauseBtn': XT.togglePause(); break;
+    case 'updateRules': XT.updateRules(); break;
+    case 'rule_url_btn': XT.saveRuleUrl(value); break;
+    case 'upstream_btn': XT.saveUpstream(value); break;
+    case 'clearLog': XT.clearLog(); break;
+    case 'back': XT.close(); break;
+  }
+}
+
+XTUI.render(document.getElementById('app'), SCHEMA, {
+  onSwitch: onSwitch,
+  onSlider: function () {},
+  onMask: function () {},
+  onSave: onSave,
+  onButton: onButton
+});
+
+window.XTRefresh = loadState;
+loadState();
+</script>
+</body>
+</html>

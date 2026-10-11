@@ -1,0 +1,885 @@
+/*
+ * 星特安全 H5 公共样式（xtui）。
+ *
+ * 所有 H5 页只写结构与业务，颜色/圆角/按钮/开关/滑块/卡片一律走这里，
+ * 不在页面内重复声明。
+ *
+ * 两套观感，由 html 上的 class 切换：
+ *   html.xtui-custom  —— 星特自有样式（橙 #ff6a00，浅底白卡）
+ *   html.xtui-mdui    —— mdui 组件接管控件，颜色 token 映射到 --mdui-color-*
+ *
+ * 深色统一由 html.dark 控制（原生 H5BaseActivity 注入），
+ * 与 prefers-color-scheme 双保险。
+ */
+
+/* ==================== 变量：星特自有 ==================== */
+:root {
+  --primary: #ff6a00;
+  --primary-hover: #e55a00;
+  --bg: #ffffff;
+  --card: #ffffff;
+  --text: #333333;
+  --muted: #666666;
+  --border: #dddddd;
+  --radius: 16px;
+  --r1: #5aa05a;
+  --r2: #f0a01e;
+  --r3: #e65a1e;
+  --r4: #c81e1e;
+  --ok: #3ca050;
+  --warn: #c8781e;
+  --link: #2864c8;
+}
+
+html.dark {
+  --bg: #1e1e1e;
+  --card: #1e1e1e;
+  --text: #e0e0e0;
+  --muted: #aaaaaa;
+  --border: #444444;
+  --link: #6ea8ff;
+  --warn: #d0a040;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not(.xtui-force-light) {
+    --bg: #1e1e1e;
+    --card: #1e1e1e;
+    --text: #e0e0e0;
+    --muted: #aaaaaa;
+    --border: #444444;
+    --link: #6ea8ff;
+    --warn: #d0a040;
+  }
+}
+
+/* mdui 模式下把颜色 token 指向 mdui 生成的角色色，保证两套观感同源 */
+html.xtui-mdui {
+  --primary: rgb(var(--mdui-color-primary));
+  --primary-hover: rgb(var(--mdui-color-primary));
+  --bg: rgb(var(--mdui-color-surface));
+  --card: rgb(var(--mdui-color-surface-container));
+  --text: rgb(var(--mdui-color-on-surface));
+  --muted: rgb(var(--mdui-color-on-surface-variant));
+  --border: rgb(var(--mdui-color-outline-variant));
+  --link: rgb(var(--mdui-color-primary));
+}
+
+/* ==================== 基础 ==================== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.6;
+  padding: 20px 16px 32px;
+  animation: xtuiPageIn 0.3s ease;
+}
+
+@keyframes xtuiPageIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ==================== 页头 ==================== */
+.xtui-header {
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.xtui-title {
+  color: var(--primary);
+  font-size: 1.8rem;
+  font-weight: 600;
+}
+
+/* ==================== 卡片 ==================== */
+.xtui-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 14px;
+  opacity: 0;
+  transform: translateY(12px);
+  animation: xtuiCardIn 0.35s ease forwards;
+}
+
+.xtui-card:nth-of-type(1) { animation-delay: 0.02s; }
+.xtui-card:nth-of-type(2) { animation-delay: 0.06s; }
+.xtui-card:nth-of-type(3) { animation-delay: 0.10s; }
+.xtui-card:nth-of-type(4) { animation-delay: 0.14s; }
+.xtui-card:nth-of-type(5) { animation-delay: 0.18s; }
+.xtui-card:nth-of-type(6) { animation-delay: 0.22s; }
+
+@keyframes xtuiCardIn {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.xtui-section {
+  color: var(--primary);
+  font-size: 20px;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+/* ==================== 开关行 ==================== */
+.xtui-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 0;
+}
+
+.xtui-row-label {
+  flex: 1;
+  padding-right: 12px;
+  font-size: 15px;
+}
+
+.xtui-toggle {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+  flex: none;
+}
+
+.xtui-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.xtui-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #cccccc;
+  transition: .3s;
+  border-radius: 24px;
+}
+
+html.dark .xtui-slider { background-color: #555555; }
+
+.xtui-slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 4px;
+  bottom: 4px;
+  background-color: #ffffff;
+  transition: .3s;
+  border-radius: 50%;
+}
+
+input:checked + .xtui-slider {
+  background-color: var(--primary);
+}
+
+input:checked + .xtui-slider:before {
+  transform: translateX(26px);
+}
+
+/* ==================== 滑块 ==================== */
+.xtui-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+  margin: 12px 0 14px;
+}
+
+.xtui-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: none;
+}
+
+/* ==================== 复选组 ==================== */
+.xtui-checks {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin: 8px 0 4px;
+}
+
+.xtui-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.xtui-check input[type=checkbox] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 1px solid #cccccc;
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+  position: relative;
+  flex: none;
+  transition: all 0.3s;
+}
+
+html.dark .xtui-check input[type=checkbox] { border-color: #666666; }
+
+.xtui-check input[type=checkbox]:checked {
+  background-color: var(--primary);
+  border-color: var(--primary);
+}
+
+.xtui-check input[type=checkbox]:checked::after {
+  content: "\2713";
+  position: absolute;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: bold;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* ==================== 文本输入 ==================== */
+.xtui-field {
+  width: 100%;
+  padding: 12px;
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  outline: none;
+  resize: vertical;
+}
+
+.xtui-field:focus {
+  border-color: var(--primary);
+}
+
+/* ==================== 按钮 ==================== */
+.xtui-btn {
+  display: block;
+  width: 100%;
+  padding: 13px 16px;
+  margin-top: 8px;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: 16px;
+  text-align: center;
+  transition: background-color 0.2s, border-color 0.2s, transform 0.12s ease;
+  will-change: transform;
+}
+
+.xtui-btn:active {
+  transform: scale(0.97);
+  background: rgba(255, 106, 0, 0.12);
+  border-color: var(--primary);
+}
+
+.xtui-btn-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+}
+
+.xtui-btn-primary:active {
+  background: var(--primary-hover);
+}
+
+.xtui-btn:disabled {
+  color: var(--muted);
+  opacity: 0.5;
+}
+
+.xtui-btn-row {
+  display: flex;
+  gap: 8px;
+}
+
+.xtui-btn-row .xtui-btn {
+  flex: 1;
+}
+
+/* mdui 模式下按钮行内是 <mdui-button>，同样需要等分 */
+html.xtui-mdui .xtui-btn-row > * {
+  flex: 1;
+  min-width: 0;
+}
+
+html.xtui-mdui .xtui-btn-row mdui-button {
+  width: 100%;
+}
+
+/* ==================== 文本辅助 ==================== */
+.xtui-tip {
+  color: var(--muted);
+  font-size: 12px;
+  padding: 8px 0 2px;
+}
+
+.xtui-tip-center {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  padding: 4px 0 8px;
+}
+
+.xtui-status {
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+  padding: 4px 0 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.xtui-mono {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+}
+
+.xtui-empty {
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 18px 0;
+}
+
+/* ============================================================================
+ * mdui 模式：全部规则以 html.xtui-mdui 作前缀，只作用在 mdui 分支。
+ * custom 模式选择器不含此后缀，一条都不会命中，两套观感互不影响。
+ *
+ * 控件分工：
+ *   开关 / 滑块 / 按钮  → 由 xtui.js 直接输出 <mdui-switch> / <mdui-slider>
+ *                        / <mdui-button>，样式来自组件 shadow DOM，此处不干预。
+ *   卡片 / 输入框 / 复选组 → 仍用自有 DOM，这里按 MD3 规范重写外观：
+ *                        无描边、surface 层级色、浅色加 elevation、深色不用阴影。
+ * ============================================================================ */
+
+/* ---------- 卡片：MD3 elevated 卡片（浅色）/ filled 卡片（深色）---------- */
+html.xtui-mdui .xtui-card {
+  background: rgb(var(--mdui-color-surface-container-low));
+  border: none;
+  border-radius: var(--mdui-shape-corner-medium);
+  box-shadow: var(--mdui-elevation-level1);
+  padding: 16px;
+}
+
+html.dark.xtui-mdui .xtui-card {
+  background: rgb(var(--mdui-color-surface-container));
+  box-shadow: none;
+}
+
+/* 卡片内标题改用 MD3 title-medium，不再用大号橙色标题压层级 */
+html.xtui-mdui .xtui-section {
+  color: rgb(var(--mdui-color-on-surface));
+  font-size: var(--mdui-typescale-title-medium-size);
+  font-weight: var(--mdui-typescale-title-medium-weight);
+  letter-spacing: var(--mdui-typescale-title-medium-tracking);
+  line-height: var(--mdui-typescale-title-medium-line-height);
+  margin-bottom: 12px;
+}
+
+/* 页头标题用 MD3 headline-small */
+html.xtui-mdui .xtui-title {
+  color: rgb(var(--mdui-color-on-surface));
+  font-size: var(--mdui-typescale-headline-small-size);
+  font-weight: var(--mdui-typescale-headline-small-weight);
+  line-height: var(--mdui-typescale-headline-small-line-height);
+}
+
+/* ---------- 输入框：MD3 outlined 文本框 ---------- */
+html.xtui-mdui .xtui-field {
+  background: transparent;
+  border: 1px solid rgb(var(--mdui-color-outline));
+  border-radius: var(--mdui-shape-corner-extra-small);
+  color: rgb(var(--mdui-color-on-surface));
+  padding: 12px;
+}
+
+html.xtui-mdui .xtui-field:focus {
+  border-color: rgb(var(--mdui-color-primary));
+  box-shadow: inset 0 0 0 1px rgb(var(--mdui-color-primary));
+  outline: none;
+}
+
+/* ---------- 复选组：MD3 checkbox 尺寸与配色 ---------- */
+html.xtui-mdui .xtui-check input[type=checkbox] {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgb(var(--mdui-color-on-surface-variant));
+  border-radius: var(--mdui-shape-corner-extra-small);
+  background: transparent;
+}
+
+html.xtui-mdui .xtui-check input[type=checkbox]:checked {
+  background-color: rgb(var(--mdui-color-primary));
+  border-color: rgb(var(--mdui-color-primary));
+}
+
+html.xtui-mdui .xtui-check input[type=checkbox]:checked::after {
+  color: rgb(var(--mdui-color-on-primary));
+}
+
+/* ---------- 文本辅助：跟随 MD3 的 on-surface-variant ---------- */
+html.xtui-mdui .xtui-tip,
+html.xtui-mdui .xtui-tip-center,
+html.xtui-mdui .xtui-status,
+html.xtui-mdui .xtui-mono,
+html.xtui-mdui .xtui-empty {
+  color: rgb(var(--mdui-color-on-surface-variant));
+}
+
+/* ---------- 兜底：万一某个页面仍用自有开关（.xtui-toggle）---------- */
+html.xtui-mdui .xtui-slider {
+  background-color: rgb(var(--mdui-color-surface-variant));
+}
+
+html.xtui-mdui input:checked + .xtui-slider {
+  background-color: rgb(var(--mdui-color-primary));
+}
+
+html.xtui-mdui .xtui-btn {
+  background: rgb(var(--mdui-color-surface-container-high));
+  color: rgb(var(--mdui-color-on-surface));
+  border: none;
+  border-radius: var(--mdui-shape-corner-full);
+}
+
+html.xtui-mdui .xtui-btn-primary {
+  background: rgb(var(--mdui-color-primary));
+  color: rgb(var(--mdui-color-on-primary));
+}
+
+/* ---------- 段落条目（使用指南等静态文本页） ---------- */
+.xtui-entry-title {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  margin: 10px 0 4px;
+}
+
+.xtui-entry-body {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 0 0 6px 8px;
+  white-space: pre-wrap;
+}
+
+html.xtui-mdui .xtui-entry-title {
+  color: rgb(var(--mdui-color-on-surface));
+  font-weight: 500;
+}
+
+html.xtui-mdui .xtui-entry-body {
+  color: rgb(var(--mdui-color-on-surface-variant));
+}
+
+/* ============================================================================
+ * 上拉菜单（sheet）。
+ *
+ * 结构由 xtui.js 的 XTUI.sheet / XTUI.openSheetHtml 生成：
+ *   .xtui-sheet-root[data-open="0|1"]
+ *     .xtui-sheet-mask
+ *     .xtui-sheet-panel > .xtui-sheet-grip + .xtui-sheet-body
+ *
+ * 动画由 data-open 属性驱动，关闭时等过渡结束再由 JS 清空节点。
+ * 曲线用 MD3 emphasized-decelerate，时长 240ms，与 xtui.js 的 SHEET_ANIM_MS 对齐。
+ * 两套观感同样以 html.xtui-custom / html.xtui-mdui 区分。
+ * ============================================================================ */
+
+/*
+ * 关键：只用 [data-open="1"] 才是可见，关闭后整层 display:none。
+ * 早期写成 [data-open]（只判属性存在），关闭时 root 仍是 fixed 全屏层，
+ * 即使内容已清空也会继续拦截点击 —— 表现为「菜单关掉后页面点不动」。
+ * 另外默认 pointer-events:none，双保险。
+ */
+.xtui-sheet-root {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  display: none;
+  pointer-events: none;
+}
+
+/* 只要挂着 data-open 属性就参与渲染（保留关闭时的滑出动画），
+   但只有 data-open="1" 才接收点击 —— 关闭后不会残留一层挡住整页。 */
+.xtui-sheet-root[data-open] {
+  display: block;
+}
+
+.xtui-sheet-root[data-open="1"] {
+  pointer-events: auto;
+}
+
+.xtui-sheet-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transition: opacity 240ms cubic-bezier(0, 0, 0, 1);
+}
+
+.xtui-sheet-root[data-open="1"] .xtui-sheet-mask {
+  opacity: 1;
+}
+
+.xtui-sheet-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 76vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.18);
+  transform: translateY(100%);
+  transition: transform 240ms cubic-bezier(0, 0, 0, 1);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.xtui-sheet-root[data-open="1"] .xtui-sheet-panel {
+  transform: translateY(0);
+}
+
+/* 顶部拖拽指示条 */
+.xtui-sheet-grip {
+  flex: none;
+  width: 32px;
+  height: 4px;
+  margin: 8px auto 2px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.xtui-sheet-body {
+  overflow: auto;
+  padding: 8px 12px 14px;
+}
+
+.xtui-sheet-title {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 6px 8px 4px;
+}
+
+.xtui-sheet-desc {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+  padding: 4px 8px 12px;
+  word-break: break-all;
+}
+
+html.xtui-mdui .xtui-sheet-desc {
+  color: rgb(var(--mdui-color-on-surface));
+  font-weight: 500;
+}
+
+.xtui-sheet-item {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 14px 12px;
+  margin-bottom: 6px;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 16px;
+  text-align: left;
+  transition: background-color 0.15s, transform 0.12s ease;
+}
+
+.xtui-sheet-item:active {
+  transform: scale(0.98);
+  background: rgba(255, 106, 0, 0.10);
+}
+
+.xtui-sheet-label {
+  font-size: 16px;
+}
+
+.xtui-sheet-sub {
+  color: var(--muted);
+  font-size: 12px;
+  padding-top: 2px;
+}
+
+.xtui-sheet-item.filled {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.xtui-sheet-item.filled .xtui-sheet-sub {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.xtui-sheet-item.danger .xtui-sheet-label {
+  color: #e74c3c;
+}
+
+.xtui-sheet-cancel {
+  margin-top: 6px;
+  text-align: center;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 12px 12px;
+}
+
+.xtui-sheet-cancel .xtui-sheet-label {
+  color: var(--muted);
+}
+
+/* ---------- mdui 分支：MD3 bottom sheet ---------- */
+html.xtui-mdui .xtui-sheet-panel {
+  background: rgb(var(--mdui-color-surface-container-low));
+  border-radius: var(--mdui-shape-corner-extra-large) var(--mdui-shape-corner-extra-large) 0 0;
+  box-shadow: var(--mdui-elevation-level2);
+}
+
+html.xtui-mdui .xtui-sheet-grip {
+  background: rgb(var(--mdui-color-outline-variant));
+}
+
+html.xtui-mdui .xtui-sheet-title {
+  color: rgb(var(--mdui-color-on-surface-variant));
+  font-size: var(--mdui-typescale-title-small-size);
+  font-weight: var(--mdui-typescale-title-small-weight);
+}
+
+html.xtui-mdui .xtui-sheet-item {
+  color: rgb(var(--mdui-color-on-surface));
+  border-radius: var(--mdui-shape-corner-full);
+  font-size: var(--mdui-typescale-body-large-size);
+}
+
+html.xtui-mdui .xtui-sheet-item:active {
+  background: rgba(var(--mdui-color-on-surface), 0.08);
+}
+
+html.xtui-mdui .xtui-sheet-label {
+  font-size: var(--mdui-typescale-body-large-size);
+}
+
+html.xtui-mdui .xtui-sheet-sub {
+  color: rgb(var(--mdui-color-on-surface-variant));
+  font-size: var(--mdui-typescale-body-small-size);
+}
+
+html.xtui-mdui .xtui-sheet-item.filled {
+  background: rgb(var(--mdui-color-primary));
+  color: rgb(var(--mdui-color-on-primary));
+}
+
+html.xtui-mdui .xtui-sheet-item.filled .xtui-sheet-sub {
+  color: rgba(var(--mdui-color-on-primary), 0.85);
+}
+
+html.xtui-mdui .xtui-sheet-item.danger .xtui-sheet-label {
+  color: rgb(var(--mdui-color-error));
+}
+
+html.xtui-mdui .xtui-sheet-cancel {
+  border-top-color: rgb(var(--mdui-color-outline-variant));
+}
+
+html.xtui-mdui .xtui-sheet-cancel .xtui-sheet-label {
+  color: rgb(var(--mdui-color-on-surface-variant));
+}
+
+/* ============================================================================
+ * 锚点菜单（menu）：点击某处就地弹出，类似桌面右键菜单。
+ *
+ * 结构由 xtui.js 的 XTUI.menu 生成：
+ *   .xtui-menu-root[data-open="0|1"] > .xtui-menu-panel > .xtui-menu-item
+ *
+ * 外层 root 恒为 pointer-events:none，只有 panel 接收点击，
+ * 因此菜单关闭后不会残留任何拦截层（与上拉菜单同一思路）。
+ * 动画：opacity + scale，160ms，与 xtui.js 的 MENU_ANIM_MS 对齐。
+ * ============================================================================ */
+
+/*
+ * 显隐策略：用 visibility 而不是 display 控制根容器。
+ *
+ * display 方案有两个硬伤，正好对应用户看到的两个现象：
+ *
+ *   1. 位置不对。
+ *      display:none 的元素不参与布局，panel.offsetWidth / offsetHeight 恒为 0，
+ *      定位计算（尤其是 align:'end' 时的 rect.right - pw）全部算错。
+ *
+ *   2. 没有弹出动画。
+ *      display:none → block 是同一帧内的不可动画切换；
+ *      而且在这次切换前，panel 的初始态（opacity:0 / scale(.92)）从未被渲染过，
+ *      紧接着改 data-open="1"，浏览器只看到终态，不产生过渡。
+ *
+ * visibility:hidden 的元素仍然参与布局：尺寸可量、初始态已被渲染，
+ * 只是不绘制、不接收点击（由 pointer-events 单独控制），
+ * 最终效果与 display:none 一致，但补上了上面两个缺口。
+ */
+.xtui-menu-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.xtui-menu-root[data-open] {
+  visibility: visible;
+}
+
+/* 关闭态（含动画进行中）不让面板接收点击，避免挡住下层页面 */
+.xtui-menu-root[data-open="0"] .xtui-menu-panel {
+  pointer-events: none;
+}
+
+.xtui-menu-panel {
+  position: absolute;
+  min-width: 180px;
+  max-width: 76vw;
+  max-height: 60vh;
+  overflow: auto;
+  padding: 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  pointer-events: auto;
+  opacity: 0;
+  transform: scale(0.92);
+  transition: opacity 160ms cubic-bezier(0, 0, 0, 1),
+              transform 160ms cubic-bezier(0, 0, 0, 1);
+}
+
+.xtui-menu-root[data-open="1"] .xtui-menu-panel {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.xtui-menu-item {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 15px;
+  text-align: left;
+  transition: background-color 0.15s;
+}
+
+.xtui-menu-item:active {
+  background: rgba(255, 106, 0, 0.12);
+}
+
+.xtui-menu-label {
+  font-size: 15px;
+}
+
+.xtui-menu-sub {
+  color: var(--muted);
+  font-size: 12px;
+  padding-top: 2px;
+}
+
+.xtui-menu-item.filled {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.xtui-menu-item.filled .xtui-menu-sub {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.xtui-menu-item.tonal {
+  background: rgba(255, 106, 0, 0.12);
+  color: var(--primary);
+}
+
+.xtui-menu-item.danger .xtui-menu-label {
+  color: #e74c3c;
+}
+
+/* ---------- mdui 分支：MD3 menu ---------- */
+html.xtui-mdui .xtui-menu-panel {
+  background: rgb(var(--mdui-color-surface-container));
+  border: none;
+  border-radius: var(--mdui-shape-corner-extra-small);
+  box-shadow: var(--mdui-elevation-level2);
+  padding: 8px 0;
+}
+
+html.xtui-mdui .xtui-menu-item {
+  color: rgb(var(--mdui-color-on-surface));
+  border-radius: 0;
+  padding: 12px 16px;
+  font-size: var(--mdui-typescale-body-large-size);
+}
+
+html.xtui-mdui .xtui-menu-item:active {
+  background: rgba(var(--mdui-color-on-surface), 0.08);
+}
+
+html.xtui-mdui .xtui-menu-label {
+  font-size: var(--mdui-typescale-body-large-size);
+}
+
+html.xtui-mdui .xtui-menu-sub {
+  color: rgb(var(--mdui-color-on-surface-variant));
+  font-size: var(--mdui-typescale-body-small-size);
+}
+
+html.xtui-mdui .xtui-menu-item.filled,
+html.xtui-mdui .xtui-menu-item.tonal {
+  background: rgb(var(--mdui-color-secondary-container));
+  color: rgb(var(--mdui-color-on-secondary-container));
+}
+
+html.xtui-mdui .xtui-menu-item.filled .xtui-menu-sub,
+html.xtui-mdui .xtui-menu-item.tonal .xtui-menu-sub {
+  color: rgb(var(--mdui-color-on-secondary-container));
+}
+
+html.xtui-mdui .xtui-menu-item.danger .xtui-menu-label {
+  color: rgb(var(--mdui-color-error));
+}

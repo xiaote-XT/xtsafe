@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Device Owner 管理 - 星特安全</title>
+<!-- 界面风格统一跟随主页，本页不提供切换入口 -->
+<link rel="stylesheet" href="lib/xtui/xtui.css">
+<script src="lib/xtui/xtui.js"></script>
+</head>
+<body>
+
+<div class="xtui-header">
+  <div class="xtui-title">Device Owner 管理</div>
+</div>
+
+<div id="app"></div>
+
+<script>
+var SCHEMA = [
+  { title: '当前状态', items: [
+    { type: 'note', key: 'status', text: '检查中…' },
+    { type: 'note', key: 'detail', mono: true, text: '' }
+  ] },
+  { title: '授权', items: [
+    { type: 'button', key: 'grant', label: '授权：设为 Device Owner' },
+    { type: 'button', key: 'revoke', label: '取消授权：移除 Device Owner' }
+  ] },
+  { title: '防卸载', items: [
+    { type: 'switch', key: 'self_block', label: '禁止卸载星特安全',
+      tip: '需先成为 Device Owner 才能开启。开启后普通方式无法卸载星特安全。' }
+  ] },
+  { title: '界面', items: [
+    { type: 'button', key: 'refresh', label: '刷新状态' },
+    { type: 'button', key: 'back', label: '返回' }
+  ] }
+];
+
+var STATE = {};
+
+function paint() {
+  var statusNode = document.getElementById('status');
+  if (statusNode) {
+    if (STATE.isOwner) statusNode.textContent = '已是 Device Owner';
+    else if (STATE.isAdmin) statusNode.textContent = '仅设备管理员，尚未提权为 Device Owner';
+    else statusNode.textContent = '未授权（设备管理员未激活）';
+  }
+
+  var detail = document.getElementById('detail');
+  if (detail) {
+    var lines = [];
+    lines.push('包名: ' + (STATE.pkg || ''));
+    lines.push('管理员组件: ' + (STATE.admin || ''));
+    lines.push('管理员已激活: ' + !!STATE.isAdmin);
+    lines.push('Device Owner: ' + !!STATE.isOwner);
+    lines.push('Shizuku: ' + (STATE.shizukuOk ? '已授权' : '未授权'));
+    if (STATE.isOwner) {
+      lines.push('禁止卸载: ' + (STATE.blocked == null ? '未知'
+        : (STATE.blocked ? '已开启' : '未开启')));
+    }
+    detail.textContent = lines.join('\n');
+  }
+
+  var grant = document.getElementById('grant');
+  if (grant) {
+    grant.disabled = !(STATE.shizukuOk && !STATE.isOwner);
+    grant.textContent = STATE.isOwner ? '已是 Device Owner' : '授权：设为 Device Owner';
+  }
+  var revoke = document.getElementById('revoke');
+  if (revoke) {
+    revoke.disabled = !(STATE.shizukuOk && (STATE.isOwner || STATE.isAdmin));
+  }
+
+  XTUI.setChecked('self_block', !!(STATE.isOwner && STATE.blocked));
+  var box = document.getElementById('self_block');
+  if (box) box.disabled = !STATE.isOwner;
+}
+
+function loadState() {
+  try { STATE = JSON.parse(XT.getState()); } catch (e) { return; }
+  paint();
+}
+
+function onSwitch(key, val) {
+  if (key === 'self_block') XT.applyUninstallBlock(val);
+}
+
+function onButton(key) {
+  switch (key) {
+    case 'grant': XT.confirmGrant(); break;
+    case 'revoke': XT.confirmRevoke(); break;
+    case 'refresh': XT.refreshStatus(); break;
+    case 'back': XT.close(); break;
+  }
+}
+
+XTUI.render(document.getElementById('app'), SCHEMA, {
+  onSwitch: onSwitch,
+  onSlider: function () {},
+  onMask: function () {},
+  onSave: function () {},
+  onButton: onButton
+});
+
+window.XTRefresh = loadState;
+loadState();
+</script>
+</body>
+</html>

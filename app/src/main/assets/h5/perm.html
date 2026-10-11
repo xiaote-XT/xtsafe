@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>权限管理 - 星特安全</title>
+<!-- 界面风格统一跟随主页，本页不提供切换入口 -->
+<link rel="stylesheet" href="lib/xtui/xtui.css">
+<script src="lib/xtui/xtui.js"></script>
+</head>
+<body>
+
+<div class="xtui-header">
+  <div class="xtui-title">权限管理</div>
+</div>
+
+<div id="app"></div>
+
+<script>
+var SCHEMA = [
+  { title: '当前状态', items: [
+    { type: 'note', key: 'status', text: '检查中…' }
+  ] },
+  { title: '权限', items: [
+    { type: 'button', key: 'onekey', label: '一键授权', variant: 'filled' },
+    { type: 'button', key: 'shizuku', label: 'Shizuku 授权' },
+    { type: 'button', key: 'acc_settings', label: '无障碍设置' },
+    { type: 'button', key: 'acc_enable', label: '一键开启无障碍' },
+    { type: 'button', key: 'notify', label: '通知权限' },
+    { type: 'button', key: 'admin', label: '设备管理员' },
+    { type: 'button', key: 'battery', label: '省电优化' }
+  ] },
+  { title: '界面', items: [
+    { type: 'button', key: 'back', label: '返回' }
+  ] }
+];
+
+function onButton(key) {
+  switch (key) {
+    case 'onekey': XT.openPage('onekey'); break;
+    case 'shizuku': XT.requestShizuku(); break;
+    case 'acc_settings': XT.openAccessibilitySettings(); break;
+    case 'acc_enable': XT.enableAccessibility(); break;
+    case 'notify': XT.requestNotification(); break;
+    case 'admin': XT.setupAdmin(); break;
+    case 'battery': XT.requestBattery(); break;
+    case 'back': XT.close(); break;
+  }
+}
+
+XTUI.render(document.getElementById('app'), SCHEMA, {
+  onSwitch: function () {},
+  onSlider: function () {},
+  onMask: function () {},
+  onSave: function () {},
+  onButton: onButton
+});
+
+function refresh() {
+  var node = document.getElementById('status');
+  if (!node) return;
+  try {
+    var s = JSON.parse(XT.getStatus());
+    node.textContent = 'Shizuku: ' + s.shizuku + '    Root: ' + s.root;
+  } catch (e) {}
+}
+
+window.XTRefresh = refresh;
+refresh();
+</script>
+</body>
+</html>

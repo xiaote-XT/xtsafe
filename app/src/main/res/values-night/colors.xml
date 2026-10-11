@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色 -->
+    <color name="xt_bg">#FF1E1E1E</color>
+    <color name="xt_card">#FF1E1E1E</color>
+    <color name="xt_text">#FFFFFFFF</color>
+    <color name="xt_muted">#FFB0B0B0</color>
+    <color name="xt_border">#FF444444</color>
+
+    <color name="xt_toast_bg">#FF161616</color>
+    <color name="xt_toast_text">#FFFFFFFF</color>
+</resources>

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>无障碍管理 - 星特安全</title>
+<!-- 界面风格统一跟随主页，本页不提供切换入口 -->
+<link rel="stylesheet" href="lib/xtui/xtui.css">
+<script src="lib/xtui/xtui.js"></script>
+<style>
+/* 列表型页面：仅补本页专属结构，颜色/圆角/文字层级全部走 xtui 变量 */
+.acc-item {
+  padding: 11px 4px;
+  border-bottom: 1px solid var(--border);
+  transition: background-color 0.15s;
+}
+.acc-item:last-child { border-bottom: none; }
+.acc-item:active { background: rgba(255, 106, 0, 0.08); }
+.acc-item.sel { background: rgba(255, 106, 0, 0.12); }
+.acc-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.acc-pkg {
+  font-size: 11px;
+  color: var(--muted);
+  word-break: break-all;
+}
+.acc-mode {
+  font-size: 12px;
+  margin-top: 2px;
+}
+.m0 { color: var(--r4); }
+.m1 { color: var(--ok); }
+.m2 { color: var(--r2); }
+.m3 { color: var(--link); }
+.m4 { color: #9b59b6; }
+.md { color: var(--muted); }
+html.xtui-mdui .acc-item { border-bottom-color: rgb(var(--mdui-color-outline-variant)); }
+html.xtui-mdui .acc-name { color: rgb(var(--mdui-color-on-surface)); font-weight: 500; }
+html.xtui-mdui .acc-pkg { color: rgb(var(--mdui-color-on-surface-variant)); }
+</style>
+</head>
+<body>
+
+<div class="xtui-header">
+  <div class="xtui-title">无障碍管理</div>
+</div>
+
+<div id="app"></div>
+
+<script>
+var MODES = ['禁止', '允许', '10分钟内允许', '锁屏后禁止', '智能管理', '默认'];
+var VALUES = [0, 1, 2, 3, 4, -1];
+var MODE_CLS = ['m0', 'm1', 'm2', 'm3', 'm4', 'md'];
+
+var apps = [];
+var batch = false;
+var sel = {};
+
+function el(id) { return document.getElementById(id); }
+
+function modeIndex(m) {
+  for (var i = 0; i < VALUES.length; i++) if (VALUES[i] === m) return i;
+  return 5;
+}
+
+function build() {
+  document.getElementById('app').innerHTML =
+    '<div class="xtui-card">'
+    + '<div class="xtui-tip-center">列出所有申请了无障碍服务的应用，点击设置策略</div>'
+    + '<div class="xtui-btn-row">'
+    + XTUI.btnHtml('batchBtn', '批量管理')
+    + XTUI.btnHtml('applyBtn', '应用')
+    + '</div>'
+    + '<div id="list"></div>'
+    + '</div>'
+    + '<div class="xtui-card">' + XTUI.btnHtml('back', '返回', 'filled') + '</div>';
+
+  el('batchBtn').addEventListener('click', toggleBatch);
+  el('applyBtn').addEventListener('click', showBatch);
+  el('back').addEventListener('click', function () { XT.close(); });
+}
+
+function render() {
+  var box = el('list');
+  if (!box) return;
+  box.innerHTML = '';
+  for (var i = 0; i < apps.length; i++) {
+    var a = apps[i];
+    var mi = modeIndex(a.mode);
+    var d = document.createElement('div');
+    d.className = 'acc-item' + (sel[i] ? ' sel' : '');
+    d.setAttribute('data-i', String(i));
+    var mark = batch ? (sel[i] ? '☑ ' : '☐ ') : '';
+    d.innerHTML = '<div class="acc-name">' + mark + XTUI.esc(a.label) + '</div>'
+      + '<div class="acc-pkg">' + XTUI.esc(a.pkg) + '</div>'
+      + '<div class="acc-mode ' + MODE_CLS[mi] + '">策略：' + MODES[mi] + '</div>';
+    d.addEventListener('click', onItemClick);
+    box.appendChild(d);
+  }
+  el('batchBtn').textContent = batch ? '取消批量' : '批量管理';
+  el('applyBtn').disabled = !batch || !hasSel();
+  if (XTUI.isMdui()) {
+    el('batchBtn').setAttribute('variant', batch ? 'tonal' : 'text');
+    el('applyBtn').setAttribute('variant', hasSel() ? 'filled' : 'text');
+  }
+}
+
+function hasSel() {
+  for (var k in sel) if (sel[k]) return true;
+  return false;
+}
+
+function selCount() {
+  var n = 0;
+  for (var k in sel) if (sel[k]) n++;
+  return n;
+}
+
+function onItemClick() {
+  var i = parseInt(this.getAttribute('data-i'), 10);
+  if (batch) { sel[i] = !sel[i]; render(); return; }
+  showMode(i);
+}
+
+function toggleBatch() {
+  batch = !batch;
+  sel = {};
+  render();
+}
+
+/* 统一走 xtui 的带动画上拉菜单（滑入/滑出 + 遮罩淡入） */
+function overlay(html) {
+  XTUI.openSheetHtml(html);
+}
+
+function closeSheet() {
+  XTUI.closeSheet();
+}
+
+function showMode(i) {
+  var a = apps[i];
+  var html = '<div class="xtui-section">' + XTUI.esc(a.label) + '</div>'
+    + '<div class="acc-pkg" style="text-align:center;margin-bottom:12px">' + XTUI.esc(a.pkg) + '</div>';
+  for (var m = 0; m < MODES.length; m++) {
+    var on = (VALUES[m] === a.mode);
+    html += XTUI.btnHtml('mode' + m, MODES[m], on ? 'tonal' : 'text');
+  }
+  overlay(html);
+  for (var b = 0; b < MODES.length; b++) {
+    (function (m) {
+      var btn = el('mode' + m);
+      if (btn) btn.addEventListener('click', function () {
+        apps[i].mode = VALUES[m];
+        XT.setMode(apps[i].pkg, VALUES[m]);
+        closeSheet();
+        render();
+      });
+    })(b);
+  }
+}
+
+function showBatch() {
+  var n = selCount();
+  if (n === 0) return;
+  var html = '<div class="xtui-section">批量设置 ' + n + ' 个应用</div>';
+  for (var m = 0; m < MODES.length; m++) {
+    html += XTUI.btnHtml('bmode' + m, MODES[m]);
+  }
+  overlay(html);
+  for (var b = 0; b < MODES.length; b++) {
+    (function (m) {
+      var btn = el('bmode' + m);
+      if (btn) btn.addEventListener('click', function () {
+        var pkgs = [];
+        for (var k in sel) if (sel[k]) pkgs.push(apps[parseInt(k, 10)].pkg);
+        XT.setBatch(pkgs.join(','), VALUES[m]);
+        for (var k2 in sel) if (sel[k2]) apps[parseInt(k2, 10)].mode = VALUES[m];
+        closeSheet();
+        batch = false;
+        sel = {};
+        render();
+      });
+    })(b);
+  }
+}
+
+function load() {
+  try { apps = JSON.parse(XT.getList()); } catch (e) { apps = []; }
+  render();
+}
+
+window.XTRefresh = load;
+build();
+load();
+</script>
+</body>
+</html>

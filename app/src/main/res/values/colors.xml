@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- xtui 主题色 -->
+    <color name="xt_primary">#FFFF6A00</color>
+    <color name="xt_primary_pressed">#FFE55A00</color>
+
+    <!-- 浅色（默认） -->
+    <color name="xt_bg">#FFFFFFFF</color>
+    <color name="xt_card">#FFFFFFFF</color>
+    <color name="xt_text">#FF1E1E1E</color>
+    <color name="xt_muted">#FF5E5E5E</color>
+    <color name="xt_border">#FFDDDDDD</color>
+
+    <!-- Toast -->
+    <color name="xt_toast_bg">#FFFBFBFB</color>
+    <color name="xt_toast_text">#FF161616</color>
+</resources>

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dhizuku 增强 - 星特安全</title>
+<!-- 界面风格统一跟随主页，本页不提供切换入口 -->
+<link rel="stylesheet" href="lib/xtui/xtui.css">
+<script src="lib/xtui/xtui.js"></script>
+</head>
+<body>
+
+<div class="xtui-header">
+  <div class="xtui-title">Dhizuku 增强</div>
+</div>
+
+<div id="app"></div>
+
+<script>
+var SCHEMA = [
+  { title: '当前状态', items: [
+    { type: 'note', key: 'status', text: '检查中…' },
+    { type: 'note', key: 'detail', mono: true, text: '' },
+    { type: 'button', key: 'request', label: '申请 Dhizuku 权限', variant: 'filled' }
+  ] },
+  { title: '防卸载', items: [
+    { type: 'switch', key: 'self_block', label: '禁止卸载星特安全',
+      tip: '需先完成 Dhizuku 授权。开启后普通方式无法卸载星特安全。' }
+  ] },
+  { title: '界面', items: [
+    { type: 'button', key: 'refresh', label: '刷新状态' },
+    { type: 'button', key: 'back', label: '返回' }
+  ] }
+];
+
+var STATE = {};
+var setting = false;
+
+function paint() {
+  var statusNode = document.getElementById('status');
+  if (statusNode) {
+    if (!STATE.initOk) statusNode.textContent = 'Dhizuku 不可用';
+    else if (!STATE.granted) statusNode.textContent = 'Dhizuku 已就绪，权限未授权';
+    else statusNode.textContent = 'Dhizuku 权限已授权';
+  }
+
+  var detail = document.getElementById('detail');
+  if (detail) {
+    var lines = [];
+    lines.push('初始化: ' + !!STATE.initOk);
+    if (STATE.owner) lines.push('Owner 包名: ' + STATE.owner);
+    if (STATE.version) lines.push('Dhizuku 版本: ' + STATE.version);
+    lines.push('API 权限: ' + (STATE.granted ? '已授权' : '未授权'));
+    lines.push('HiddenAPI 豁免: ' + (STATE.exempt ? '成功' : '失败或未执行'));
+    if (STATE.granted) {
+      lines.push('防卸载支持: ' + (STATE.supported ? '是' : '否'));
+      if (STATE.supported) {
+        lines.push('当前防卸载: ' + (STATE.blocked == null ? '未知' : (STATE.blocked ? '已开启' : '未开启')));
+      } else if (STATE.diag) {
+        lines.push('不支持原因: ' + STATE.diag);
+      }
+    }
+    if (STATE.err) lines.push('说明: ' + STATE.err);
+    detail.textContent = lines.join('\n');
+  }
+
+  var req = document.getElementById('request');
+  if (req) {
+    if (!STATE.initOk) { req.textContent = 'Dhizuku 不可用'; req.disabled = true; }
+    else if (!STATE.granted) { req.textContent = '申请 Dhizuku 权限'; req.disabled = false; }
+    else { req.textContent = '已授权，无需操作'; req.disabled = true; }
+  }
+
+  setting = true;
+  XTUI.setChecked('self_block', !!STATE.blocked);
+  var canUse = STATE.granted && STATE.supported;
+  var box = document.getElementById('self_block');
+  if (box) box.disabled = !canUse;
+  setting = false;
+}
+
+function loadState() {
+  try { STATE = JSON.parse(XT.getState()); } catch (e) { return; }
+  paint();
+}
+
+function onSwitch(key, val) {
+  if (key === 'self_block') XT.applyUninstallBlock(val);
+}
+
+function onButton(key) {
+  if (key === 'request') XT.requestPermission();
+  else if (key === 'refresh') XT.refreshStatus();
+  else if (key === 'back') XT.close();
+}
+
+XTUI.render(document.getElementById('app'), SCHEMA, {
+  onSwitch: onSwitch,
+  onSlider: function () {},
+  onMask: function () {},
+  onSave: function () {},
+  onButton: onButton
+});
+
+window.XTRefresh = loadState;
+loadState();
+</script>
+</body>
+</html>

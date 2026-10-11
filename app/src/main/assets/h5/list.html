@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>名单管理 - 星特安全</title>
+<!-- 界面风格统一跟随主页，本页不提供切换入口 -->
+<link rel="stylesheet" href="lib/xtui/xtui.css">
+<script src="lib/xtui/xtui.js"></script>
+<style>
+/* 列表型页面：仅补本页专属结构，颜色/圆角/文字层级全部走 xtui 变量 */
+.li-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+.li-tab {
+  flex: 1;
+  padding: 9px 2px;
+  background: var(--card);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 13px;
+  transition: color 0.2s, border-color 0.2s, transform 0.12s ease;
+}
+.li-tab.on { color: var(--primary); border-color: var(--primary); font-weight: 600; }
+.li-tab:active { transform: scale(0.97); }
+.li-item {
+  padding: 11px 4px;
+  border-bottom: 1px solid var(--border);
+  transition: background-color 0.15s;
+}
+.li-item:last-child { border-bottom: none; }
+.li-item:active { background: rgba(255, 106, 0, 0.08); }
+.li-name { font-size: 15px; font-weight: 600; color: var(--text); }
+.li-path { font-size: 11px; color: var(--link); word-break: break-all; }
+.li-divider {
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 14px 0 8px;
+}
+
+/* mdui 分支：按钮与分隔走 MD3 token */
+html.xtui-mdui .li-tab {
+  background: rgb(var(--mdui-color-surface-container-high));
+  border: none;
+  border-radius: var(--mdui-shape-corner-full);
+  color: rgb(var(--mdui-color-on-surface-variant));
+}
+html.xtui-mdui .li-tab.on {
+  background: rgb(var(--mdui-color-secondary-container));
+  color: rgb(var(--mdui-color-on-secondary-container));
+}
+html.xtui-mdui .li-item { border-bottom-color: rgb(var(--mdui-color-outline-variant)); }
+html.xtui-mdui .li-name { color: rgb(var(--mdui-color-on-surface)); font-weight: 500; }
+html.xtui-mdui .li-path { color: rgb(var(--mdui-color-primary)); }
+html.xtui-mdui .li-divider { color: rgb(var(--mdui-color-on-surface-variant)); }
+</style>
+</head>
+<body>
+
+<div class="xtui-header">
+  <div class="xtui-title">名单管理</div>
+</div>
+
+<div id="app"></div>
+<script>
+var TIPS = {
+  sensitive: '进入敏感App时，智能管理模式的应用将暂时停止无障碍。长按条目可移除',
+  managed: '管控应用不禁止安装，仅单独标记管理。长按条目可移除',
+  whitelist: '白名单应用不参与安全扫描、全屏覆盖拦截，也不参与冻结。长按条目可移除',
+  frozen: '展示系统内当前真实被冻结的全部应用。长按条目可解冻'
+};
+var TABS = [
+  { key: 'sensitive', label: '敏感App' },
+  { key: 'managed', label: '管控列表' },
+  { key: 'whitelist', label: '白名单' },
+  { key: 'frozen', label: '冻结应用' }
+];
+
+var currentTab = 'sensitive';
+var items = [];
+
+function el(id) { return document.getElementById(id); }
+
+function build() {
+  var tabs = '<div class="li-tabs">';
+  for (var i = 0; i < TABS.length; i++) {
+    tabs += '<button class="li-tab" data-tab="' + TABS[i].key + '">'
+      + TABS[i].label + '</button>';
+  }
+  tabs += '</div>';
+
+  document.getElementById('app').innerHTML =
+    '<div class="xtui-card">' + tabs
+    + '<div class="xtui-tip-center" id="tip"></div>'
+    + XTUI.btnHtml('pickBtn', '选择应用', 'filled')
+    + '<div id="list"></div>'
+    + '</div>'
+    + '<div class="xtui-card">' + XTUI.btnHtml('back', '返回') + '</div>';
+
+  var btns = document.querySelectorAll('.li-tab');
+  for (var j = 0; j < btns.length; j++) {
+    btns[j].addEventListener('click', function () {
+      switchTab(this.getAttribute('data-tab'));
+    });
+  }
+  el('pickBtn').addEventListener('click', function () { XT.pick(currentTab); });
+  el('back').addEventListener('click', function () { XT.close(); });
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  var btns = document.querySelectorAll('.li-tab');
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].className = (btns[i].getAttribute('data-tab') === tab) ? 'li-tab on' : 'li-tab';
+  }
+  el('tip').textContent = TIPS[tab] || '';
+  var pick = el('pickBtn');
+  if (pick) {
+    pick.textContent = (tab === 'frozen') ? '选择应用（加入并冻结）' : '选择应用';
+    if (XTUI.isMdui()) {
+      pick.setAttribute('variant', 'filled');
+    }
+  }
+  load();
+}
+
+function load() {
+  try { items = JSON.parse(XT.getList(currentTab)); } catch (e) { items = []; }
+  render();
+}
+
+function render() {
+  var box = el('list');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!items.length) {
+    var e = document.createElement('div');
+    e.className = 'xtui-empty';
+    e.textContent = '暂无条目';
+    box.appendChild(e);
+    return;
+  }
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    if (it.divider) {
+      var d = document.createElement('div');
+      d.className = 'li-divider';
+      d.textContent = it.divider;
+      box.appendChild(d);
+      continue;
+    }
+    var row = document.createElement('div');
+    row.className = 'li-item';
+    row.setAttribute('data-pkg', it.pkg);
+    row.setAttribute('data-flag', it.flag || '');
+    row.innerHTML = '<div class="li-name">' + XTUI.esc(it.label) + '</div>'
+      + '<div class="li-path">' + XTUI.esc(it.path) + '</div>';
+    bindHold(row);
+    box.appendChild(row);
+  }
+}
+
+function bindHold(node) {
+  var timer = null;
+  node.addEventListener('touchstart', function () {
+    timer = setTimeout(function () {
+      timer = null;
+      onHold(node.getAttribute('data-pkg'), node.getAttribute('data-flag'));
+    }, 550);
+  });
+  var clear = function () { if (timer) { clearTimeout(timer); timer = null; } };
+  node.addEventListener('touchend', clear);
+  node.addEventListener('touchmove', clear);
+  node.addEventListener('touchcancel', clear);
+}
+
+/* 统一走 xtui 的带动画上拉菜单（滑入/滑出 + 遮罩淡入） */
+function overlay(html) {
+  XTUI.openSheetHtml(html);
+}
+
+function closeSheet() {
+  XTUI.closeSheet();
+}
+
+function onHold(pkg, flag) {
+  var label = pkg;
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].pkg === pkg) { label = items[i].label; break; }
+  }
+  var title, actionId, actionText;
+  if (currentTab === 'sensitive' && flag === 'removed') {
+    title = '恢复默认'; actionId = 'doRestore'; actionText = '恢复';
+  } else if (currentTab === 'frozen') {
+    title = '解冻'; actionId = 'doUnfreeze'; actionText = '解冻';
+  } else {
+    title = '移除'; actionId = 'doRemove'; actionText = '移除';
+  }
+  overlay('<div class="xtui-section">' + XTUI.esc(title) + '</div>'
+    + '<div class="xtui-tip-center">' + XTUI.esc(label) + '</div>'
+    + XTUI.btnHtml(actionId, actionText, 'filled')
+    + XTUI.btnHtml('doCancel', '取消'));
+
+  el('doCancel').addEventListener('click', closeSheet);
+  if (actionId === 'doRestore') {
+    el('doRestore').addEventListener('click', function () {
+      XT.restore(pkg); closeSheet(); load();
+    });
+  } else if (actionId === 'doUnfreeze') {
+    el('doUnfreeze').addEventListener('click', function () {
+      XT.unfreeze(pkg); closeSheet(); load();
+    });
+  } else {
+    el('doRemove').addEventListener('click', function () {
+      XT.remove(currentTab, pkg); closeSheet(); load();
+    });
+  }
+}
+
+window.XTRefresh = load;
+build();
+switchTab('sensitive');
+</script>
+</body>
+</html>

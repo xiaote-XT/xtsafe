@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTheme.Light" parent="@android:style/Theme.DeviceDefault.Light" />
+
+    <!--
+        xtui 规范：页面自带大标题与左上角返回钮，不要系统 ActionBar。
+        原生页面统一挂这个主题。
+    -->
+    <style name="AppTheme.NoActionBar" parent="@android:style/Theme.DeviceDefault.Light.NoActionBar">
+        <item name="android:windowBackground">@color/xt_bg</item>
+        <item name="android:colorAccent">@color/xt_primary</item>
+    </style>
+</resources>

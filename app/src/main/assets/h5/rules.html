@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>规则管理 - 星特安全</title>
+<!-- 界面风格统一跟随主页，本页不提供切换入口 -->
+<link rel="stylesheet" href="lib/xtui/xtui.css">
+<script src="lib/xtui/xtui.js"></script>
+</head>
+<body>
+
+<div class="xtui-header">
+  <div class="xtui-title">规则管理</div>
+</div>
+
+<div id="app"></div>
+<script>
+var AUTO_NAMES = ['关闭', '每天', '每星期', '每次打开'];
+var STATE = {};
+
+function el(id) { return document.getElementById(id); }
+
+function build() {
+  var app = document.getElementById('app');
+  app.innerHTML =
+    '<div class="xtui-card">'
+    + '<div class="xtui-section">当前规则来源</div>'
+    + '<div class="xtui-status" id="status"></div>'
+    + '<div class="xtui-btn-row">'
+    + XTUI.btnHtml('delImport', '删除导入规则')
+    + XTUI.btnHtml('delCloud', '删除云端规则')
+    + '</div>'
+    + '</div>'
+
+    + '<div class="xtui-card">'
+    + '<div class="xtui-section">编辑规则</div>'
+    + '<textarea class="xtui-field" id="ruleText" rows="12" spellcheck="false"></textarea>'
+    + XTUI.btnHtml('saveImport', '保存为导入规则', 'filled')
+    + '</div>'
+
+    + '<div class="xtui-card">'
+    + '<div class="xtui-section">导入</div>'
+    + XTUI.btnHtml('importFile', '选择规则文件')
+    + '<input class="xtui-field" type="text" id="linkUrl" spellcheck="false">'
+    + XTUI.btnHtml('linkImport', '从链接导入')
+    + '</div>'
+
+    + '<div class="xtui-card">'
+    + '<div class="xtui-section">云端更新</div>'
+    + XTUI.btnHtml('checkCloud', '检查云端更新')
+    + '<div class="xtui-status" id="autoStatus"></div>'
+    + '<div class="xtui-btn-row" id="autoRow"></div>'
+    + '</div>'
+
+    + '<div class="xtui-card">' + XTUI.btnHtml('back', '返回', 'filled') + '</div>';
+
+  el('delImport').addEventListener('click', function () { askDelete('导入规则', 'deleteImport'); });
+  el('delCloud').addEventListener('click', function () { askDelete('云端规则', 'deleteCloud'); });
+  el('saveImport').addEventListener('click', function () { XT.saveImport(XTUI.getValue('ruleText')); });
+  el('importFile').addEventListener('click', function () { XT.importFile(); });
+  el('linkImport').addEventListener('click', function () { XT.linkImport(XTUI.getValue('linkUrl')); });
+  el('checkCloud').addEventListener('click', function () { XT.checkCloud(); });
+  el('back').addEventListener('click', function () { XT.close(); });
+}
+
+/* 自动更新频率行：值 0 关 / 1 每天 / 2 每星期 / 3 每次打开，键名与原生一致 */
+function buildAutoRow() {
+  var box = el('autoRow');
+  if (!box) return;
+  box.innerHTML = '';
+  for (var i = 0; i < AUTO_NAMES.length; i++) {
+    (function (k) {
+      var b = document.createElement('div');
+      b.innerHTML = XTUI.btnHtml('auto' + k, AUTO_NAMES[k],
+        (k === (STATE.autoFreq || 0)) ? 'tonal' : 'text');
+      box.appendChild(b.firstChild);
+      var btn = el('auto' + k);
+      if (btn) btn.addEventListener('click', function () {
+        STATE.autoFreq = k;
+        XT.setAutoFreq(k);
+        paint();
+      });
+    })(i);
+  }
+}
+
+function paint() {
+  var s = el('status');
+  if (s) s.textContent = STATE.statusText || '';
+  var di = el('delImport');
+  if (di) di.style.display = STATE.hasImport ? 'block' : 'none';
+  var dc = el('delCloud');
+  if (dc) dc.style.display = STATE.hasCloud ? 'block' : 'none';
+  if (document.activeElement !== el('ruleText')) {
+    XTUI.setValue('ruleText', STATE.ruleText || '');
+  }
+  if (document.activeElement !== el('linkUrl')) {
+    XTUI.setValue('linkUrl', STATE.linkUrl || '');
+  }
+  var a = el('autoStatus');
+  if (a) a.textContent = '自动更新：' + AUTO_NAMES[STATE.autoFreq || 0];
+  buildAutoRow();
+}
+
+function load() {
+  try { STATE = JSON.parse(XT.getState()); } catch (e) { return; }
+  paint();
+}
+
+/* 统一走 xtui 的带动画上拉菜单（滑入/滑出 + 遮罩淡入） */
+function overlay(html) {
+  XTUI.openSheetHtml(html);
+}
+
+function closeSheet() {
+  XTUI.closeSheet();
+}
+
+function askDelete(label, action) {
+  overlay('<div class="xtui-section">删除' + XTUI.esc(label) + '</div>'
+    + '<div class="xtui-status">确定删除' + XTUI.esc(label) + '？</div>'
+    + XTUI.btnHtml('doDel', '删除', 'filled')
+    + XTUI.btnHtml('doCancel', '取消'));
+  el('doCancel').addEventListener('click', closeSheet);
+  el('doDel').addEventListener('click', function () {
+    closeSheet();
+    if (action === 'deleteImport') XT.deleteImport();
+    else XT.deleteCloud();
+  });
+}
+
+/* 原生 checkCloud 发现新规则后回调这里，前端弹确认层 */
+window.XTAskUpdate = function () {
+  overlay('<div class="xtui-section">发现新规则</div>'
+    + '<div class="xtui-status">是否更新云端规则？</div>'
+    + XTUI.btnHtml('doUpd', '更新', 'filled')
+    + XTUI.btnHtml('doCancel', '取消'));
+  el('doCancel').addEventListener('click', closeSheet);
+  el('doUpd').addEventListener('click', function () {
+    closeSheet();
+    XT.applyCloud();
+  });
+};
+
+window.XTRefresh = load;
+build();
+load();
+</script>
+</body>
+</html>

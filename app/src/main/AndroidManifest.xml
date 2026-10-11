@@ -1,0 +1,416 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="xiaote.AnQuan">
+
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Dhizuku API 权限：DhizukuTool 调用 Dhizuku 服务端所需 -->
+    <uses-permission android:name="com.rosan.dhizuku.permission.API" />
+
+    <!--
+        包可见性声明。targetSdk 30+ 时不声明就看不到对应包，
+        ContentResolver.call 访问 provider 会直接失败。
+        保活助手同理：不声明就发不出显式广播。
+    -->
+    <queries>
+        <package android:name="com.rosan.dhizuku" />
+        <package android:name="xiaote.AnQuan.helper.keepalive" />
+        <!-- 专版 Shizuku：需可见才能读取它的包信息与签名 -->
+        <package android:name="roro.stellar.manager" />
+        <intent>
+            <action android:name="com.rosan.dhizuku.server.provider" />
+        </intent>
+        <intent>
+            <action android:name="com.rosan.dhizuku.action.request.permission" />
+        </intent>
+        <intent>
+            <action android:name="com.rosan.dhizuku.action.REQUEST_DHIZUKU_PERMISSION" />
+        </intent>
+    </queries>
+
+    <application
+        android:name=".App"
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:theme="@style/AppTheme.Light"
+        android:enableOnBackInvokedCallback="true">
+
+        <!-- 主页走 xtui：无系统 ActionBar，自带大标题 -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- H5 界面壳（主页）：默认不启用，ui_mode=h5 时由 MainActivity 分流进入 -->
+        <activity
+            android:name=".H5MainActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
+
+        <!-- H5 界面壳（主动防护） -->
+        <activity
+            android:name=".H5ProtectionActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
+
+        <!-- H5 界面壳（权限管理） -->
+        <activity
+            android:name=".H5PermissionActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
+
+        <!-- H5 界面壳（权限增强） -->
+        <activity
+            android:name=".H5EnhanceActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
+
+        <!-- H5 界面壳（使用指南） -->
+        <activity
+            android:name=".H5GuideActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
+
+        <!-- H5 界面壳（更新日志） -->
+        <activity
+            android:name=".H5UpdateLogActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
+
+        <!-- H5 界面壳（悬浮按钮设置） -->
+        <activity
+            android:name=".H5FloatActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
+
+        <!-- H5 界面壳（无障碍管理） -->
+        <activity
+            android:name=".H5AccActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
+
+        <!-- H5 界面壳（名单管理） -->
+        <activity
+            android:name=".H5ListActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
+
+        <!-- H5 界面壳（Shizuku 增强） -->
+        <activity
+            android:name=".H5ShizukuActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
+
+        <!-- H5 界面壳（Dhizuku 增强） -->
+        <activity
+            android:name=".H5DhizukuActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
+
+        <!-- H5 界面壳（Device Owner 管理） -->
+        <activity
+            android:name=".H5DeviceOwnerActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
+
+        <!-- H5 界面壳（广告拦截） -->
+        <activity
+            android:name=".H5KillAdActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
+
+        <!-- H5 界面壳（后台进程管理） -->
+        <activity
+            android:name=".H5ProcessActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
+
+        <!-- H5 界面壳（安全扫描） -->
+        <activity
+            android:name=".H5ScanActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
+
+        <!-- H5 界面壳（规则管理） -->
+        <activity
+            android:name=".H5RuleManagerActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
+
+        <activity
+            android:name=".AccessibilityManagerActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <activity
+            android:name=".FloatingButtonSettingsActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <!-- xtui 规范：页面自带大标题，不要系统 ActionBar -->
+        <activity
+            android:name=".ProtectionSettingsActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <activity
+            android:name=".UsageGuideActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <!-- 更多小工具（无障碍管理 / 广告拦截 / 进程管理 入口聚合） -->
+        <activity
+            android:name=".MoreToolsActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <!-- 设置（密码锁：数字密码 / 系统验证） -->
+        <activity
+            android:name=".Setting.SettingActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <!-- 保活增强（星特安全 ↔ 保活助手 互相拉起链路的状态与配置） -->
+        <activity
+            android:name=".KeepAliveActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <!-- 密码页改用全屏主题：Dialog 主题存在"窗口外部区域"，
+             点空白会触发 ACTION_OUTSIDE 关闭本页并返回 CANCELED，
+             父页面随即 finishAffinity 杀掉整个任务。全屏主题从根上消除该问题。 -->
+        <activity
+            android:name=".PasswordLockActivity"
+            android:exported="false"
+            android:excludeFromRecents="true" />
+
+        <service
+            android:name=".XTSafeMainService"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- 核心常驻服务：不依赖无障碍，负责音量阈值检测 / 阻止卸载周期任务 /
+             无障碍掉线兜底 / 时间回拨检测 / 反向唤醒助手。 -->
+        <service
+            android:name=".XTSafeCoreService"
+            android:exported="false" />
+
+        <!-- Shizuku Provider -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
+        <meta-data
+            android:name="moe.shizuku.client.V3_SUPPORT"
+            android:value="true" />
+
+        <!-- 开机自启动 -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 强制置顶兜底闹钟（系统调度，独立于服务进程存活） -->
+        <receiver
+            android:name=".ForceTopAlarmReceiver"
+            android:exported="false" />
+
+        <!-- 保活助手唤醒广播接收器。
+             必须 exported=true：被强停后星特安全处于 stopped state，
+             只有外部应用发来的广播（带 FLAG_INCLUDE_STOPPED_PACKAGES）才能穿透。 -->
+        <receiver
+            android:name=".HelperWakeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="xiaote.AnQuan.action.WAKE_TARGET" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 广告拦截（本地 DNS 层 VPN，KillAd） -->
+        <service
+            android:name=".SmallTool.KillAd.KillAdVpnService"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
+
+        <activity
+            android:name=".SmallTool.KillAd.KillAdActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <!-- 进程管理（Shizuku 扫描 ps，打开/强制停止应用） -->
+        <activity
+            android:name=".SmallTool.ProcessManager.ProcessManagerActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <!-- Device Owner 管理（授权 / 取消授权 / 禁止卸载） -->
+        <activity
+            android:name=".DeviceOwnerActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <!-- 权限管理（集中原主界面授权区入口） -->
+        <activity
+            android:name=".PermissionManager.Activity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <!-- 权限增强（Shizuku / Dhizuku / Device Owner 增强入口） -->
+        <activity
+            android:name=".PermissionManager.EnhanceActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
+
+        <!-- 一键授权（自动申请 + 自动点击 + 定时拉回前台） -->
+        <activity
+            android:name=".PermissionManager.OneKeyAuthActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
+
+        <!-- Shizuku 增强（service call 阻止卸载） -->
+        <activity
+            android:name=".ShizukuActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
+
+        <!-- Dhizuku 授权入口（基于 xiaote.dhizukutool 手写 AIDL） -->
+        <activity
+            android:name=".DhizukuActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <!-- 名单管理（敏感App / 管控 / 白名单 / 冻结，顶部 tab 切换） -->
+        <activity
+            android:name=".ListManagerActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <!-- 应用选择器（无界面入口，供名单管理内部调用） -->
+        <activity
+            android:name=".SmallTool.AppPicker.AppPickerActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <!-- 键盘 IME（应急方案） -->
+        <service
+            android:name=".AntiLockIME"
+            android:permission="android.permission.BIND_INPUT_METHOD"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.view.InputMethod" />
+            </intent-filter>
+            <meta-data
+                android:name="android.view.im"
+                android:resource="@xml/ime_keyboard" />
+        </service>
+
+        <!-- 设备管理员（防卸载） -->
+        <receiver
+            android:name=".DeviceAdmin"
+            android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
+        <activity
+            android:name=".SecurityScanActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/vnd.android.package-archive" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="file" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/vnd.android.package-archive" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="file" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".RuleManagerActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <activity
+            android:name=".UpdateLogActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <!-- 新安装应用检测结果 Dialog（点击通知弹出，不跳转主界面） -->
+        <activity
+            android:name=".ScanResultDialogActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault.Light.Dialog"
+            android:excludeFromRecents="true" />
+
+        </application>
+</manifest>

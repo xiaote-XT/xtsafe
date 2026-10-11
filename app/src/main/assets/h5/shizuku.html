@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shizuku 增强 - 星特安全</title>
+<!-- 界面风格统一跟随主页，本页不提供切换入口 -->
+<link rel="stylesheet" href="lib/xtui/xtui.css">
+<script src="lib/xtui/xtui.js"></script>
+</head>
+<body>
+
+<div class="xtui-header">
+  <div class="xtui-title">Shizuku 增强</div>
+</div>
+
+<div id="app"></div>
+
+<script>
+var SCHEMA = [
+  { title: '当前状态', items: [
+    { type: 'note', key: 'status', text: '检查中…' }
+  ] },
+  { title: '事务号', items: [
+    { type: 'input', key: 'tid', placeholder: '默认按 SDK 推导', btnLabel: '应用',
+      tip: '默认不需要动。如果不小心改了，把设备的 Android 版本告诉 AI，让 AI 告诉你怎么填。' }
+  ] },
+  { title: '自身', items: [
+    { type: 'switch', key: 'self_block', label: '阻止卸载星特安全' }
+  ] },
+  { title: '阻止卸载', items: [
+    { type: 'switch', key: 'batch_on', label: '启用',
+      tip: '阻止所有应用被卸载，防止恶意应用卸载游戏。与下方互斥。' },
+    { type: 'slider', key: 'batch_ticks', min: 1, max: 72000, step: 1,
+      fmt: function (v) { return '检查频率：' + XT.formatInterval(v); } }
+  ] },
+  { title: '阻止阻止卸载', items: [
+    { type: 'switch', key: 'unblock_on', label: '启用',
+      tip: '阻止一些应用拦截卸载（不含无障碍自动点击拦截），避免恶意应用无法被卸载。与上方互斥。' },
+    { type: 'slider', key: 'unblock_ticks', min: 1, max: 72000, step: 1,
+      fmt: function (v) { return '检查频率：' + XT.formatInterval(v); } }
+  ] },
+  { title: '说明', items: [
+    { type: 'note', text: '设备必须有设备所有者（Device Owner），防卸载命令才会真正生效。可以选择星特安全、Dhizuku 或其他支持该提权操作的应用激活。不清楚是什么、为什么激活不了，问 AI，推荐 DeepSeek 而不是豆包。' }
+  ] },
+  { title: '界面', items: [
+    { type: 'button', key: 'refresh', label: '刷新状态' },
+    { type: 'button', key: 'back', label: '返回' }
+  ] }
+];
+
+var STATE = {};
+
+function paintStatus() {
+  var node = document.getElementById('status');
+  if (!node) return;
+  var ready = !!STATE.ready;
+  var tid = STATE.tid || 0;
+  var self = STATE.self_blocked;
+  node.textContent = 'Shizuku 就绪：' + (ready ? '是' : '否')
+    + '  事务号：' + (tid > 0 ? tid : '无效') + '\n'
+    + '自身状态：' + (self == null ? '无法回读' : (self ? '已阻止卸载' : '未阻止'));
+}
+
+function loadState() {
+  try { STATE = JSON.parse(XT.getState()); } catch (e) { return; }
+  XTUI.apply(SCHEMA, STATE);
+  paintStatus();
+}
+
+function onSwitch(key, val) {
+  STATE[key] = val;
+  if (key === 'self_block') XT.applySelfBlock(val);
+  else if (key === 'batch_on') XT.applyBatch(true, val);
+  else if (key === 'unblock_on') XT.applyBatch(false, val);
+}
+
+function onSlider(key, val) {
+  STATE[key] = val;
+  if (key === 'batch_ticks') XT.setBatchTicks(true, val);
+  else if (key === 'unblock_ticks') XT.setBatchTicks(false, val);
+}
+
+function applyTid() {
+  var v = (XTUI.getValue('tid') || '').trim();
+  var n = 0;
+  if (v.length) {
+    n = parseInt(v, 10);
+    if (!(n > 0)) { XT.toast('事务号必须为正整数'); return; }
+  }
+  XT.setTid(n);
+}
+
+function onButton(key) {
+  if (key === 'tid_btn') applyTid();
+  else if (key === 'refresh') XT.refreshStatus();
+  else if (key === 'back') XT.close();
+}
+
+XTUI.render(document.getElementById('app'), SCHEMA, {
+  onSwitch: onSwitch,
+  onSlider: onSlider,
+  onMask: function () {},
+  onSave: function () {},
+  onButton: onButton
+});
+
+window.XTRefresh = loadState;
+loadState();
+</script>
+</body>
+</html>

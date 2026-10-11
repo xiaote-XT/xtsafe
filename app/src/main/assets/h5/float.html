@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>悬浮按钮设置 - 星特安全</title>
+<!-- 界面风格统一跟随主页，本页不提供切换入口 -->
+<link rel="stylesheet" href="lib/xtui/xtui.css">
+<script src="lib/xtui/xtui.js"></script>
+</head>
+<body>
+
+<div class="xtui-header">
+  <div class="xtui-title">悬浮按钮设置</div>
+</div>
+
+<div id="app"></div>
+
+<script>
+/* 颜色与位置/模式取值与原生 FloatingButtonSettingsActivity 完全一致 */
+var COLORS = [
+  { name: '橙', hex: '#8CFFC864' },
+  { name: '白', hex: '#8CFFFFFF' },
+  { name: '紫', hex: '#8CA064E6' },
+  { name: '蓝', hex: '#8C64B4FF' },
+  { name: '绿', hex: '#8C64E696' },
+  { name: '红', hex: '#8CFF6464' }
+];
+var POSITIONS = ['左', '中', '右'];
+var MODES = ['重启服务', '最高优先级', '混合'];
+
+var SCHEMA = [
+  { title: '悬浮按钮', items: [
+    { type: 'switch', key: 'dot_enabled', label: '显示悬浮按钮',
+      tip: '关闭后不创建状态栏悬浮按钮，并一并关闭强制置顶。' },
+    { type: 'slider', key: 'dot_width', min: 10, max: 120, step: 1,
+      fmt: function (v) { return '宽度：' + v + ' dp'; } },
+    { type: 'slider', key: 'dot_height', min: 0, max: 60, step: 1,
+      fmt: function (v) { return v === 0 ? '高度：自动' : ('高度：' + v + ' dp'); } },
+    { type: 'slider', key: 'dot_alpha', min: 0, max: 255, step: 1,
+      fmt: function (v) { return '透明度：' + v; } }
+  ] },
+  { title: '颜色', items: [
+    { type: 'note', key: 'colorRow', mono: false, text: '' }
+  ] },
+  { title: '位置', items: [
+    { type: 'note', key: 'posRow', mono: false, text: '' }
+  ] },
+  { title: '强制置顶', items: [
+    { type: 'switch', key: 'force_top', label: '启用强制置顶' },
+    { type: 'note', key: 'modeRow', mono: false, text: '' },
+    { type: 'switch', key: 'force_stop_on_screen_off', label: '锁屏时停止置顶' },
+    { type: 'slider', key: 'force_interval', min: 5, max: 60, step: 1,
+      fmt: function (v) { return '置顶间隔：' + v + ' 秒'; } }
+  ] },
+  { title: '保活', items: [
+    { type: 'switch', key: 'background_keep_alive', label: '后台保活优化' }
+  ] },
+  { title: '界面', items: [
+    { type: 'button', key: 'back', label: '返回' }
+  ] }
+];
+
+var STATE = {};
+
+function paintRows() {
+  var colorBox = document.getElementById('colorRow');
+  if (colorBox) {
+    var cur = String(STATE.dot_color || '').toUpperCase();
+    var h = '';
+    for (var i = 0; i < COLORS.length; i++) {
+      var on = (COLORS[i].hex.toUpperCase() === cur);
+      h += XTUI.btnHtml('c' + i, COLORS[i].name, on ? 'tonal' : 'text');
+    }
+    colorBox.innerHTML = h;
+    for (var j = 0; j < COLORS.length; j++) {
+      (function (k) {
+        var b = document.getElementById('c' + k);
+        if (b) b.addEventListener('click', function () {
+          STATE.dot_color = COLORS[k].hex;
+          XT.setDotColor(COLORS[k].hex);
+          paintRows();
+        });
+      })(j);
+    }
+  }
+
+  var posBox = document.getElementById('posRow');
+  if (posBox) {
+    var h2 = '';
+    for (var m = 0; m < POSITIONS.length; m++) {
+      var on2 = (m === STATE.dot_position);
+      h2 += XTUI.btnHtml('p' + m, POSITIONS[m], on2 ? 'tonal' : 'text');
+    }
+    posBox.innerHTML = h2;
+    for (var n = 0; n < POSITIONS.length; n++) {
+      (function (k) {
+        var b = document.getElementById('p' + k);
+        if (b) b.addEventListener('click', function () {
+          STATE.dot_position = k;
+          XT.setInt('dot_position', k);
+          paintRows();
+        });
+      })(n);
+    }
+  }
+
+  var modeBox = document.getElementById('modeRow');
+  if (modeBox) {
+    var h3 = '';
+    for (var q = 0; q < MODES.length; q++) {
+      var on3 = (q === STATE.force_top_mode);
+      h3 += XTUI.btnHtml('m' + q, MODES[q], on3 ? 'tonal' : 'text');
+    }
+    modeBox.innerHTML = h3;
+    for (var r = 0; r < MODES.length; r++) {
+      (function (k) {
+        var b = document.getElementById('m' + k);
+        if (b) b.addEventListener('click', function () {
+          STATE.force_top_mode = k;
+          XT.setInt('force_top_mode', k);
+          paintRows();
+        });
+      })(r);
+    }
+  }
+}
+
+function loadState() {
+  try { STATE = JSON.parse(XT.getState()); } catch (e) { return; }
+  XTUI.apply(SCHEMA, STATE);
+  paintRows();
+}
+
+function onSwitch(key, val) {
+  STATE[key] = val;
+  XT.setBool(key, val);
+}
+
+function onSlider(key, val) {
+  STATE[key] = val;
+  XT.setInt(key, val);
+}
+
+function onButton(key) {
+  if (key === 'back') XT.close();
+}
+
+XTUI.render(document.getElementById('app'), SCHEMA, {
+  onSwitch: onSwitch,
+  onSlider: onSlider,
+  onMask: function () {},
+  onSave: function () {},
+  onButton: onButton
+});
+
+window.XTRefresh = loadState;
+loadState();
+</script>
+</body>
+</html>

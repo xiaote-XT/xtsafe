@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>星特安全</title>
+<!-- 公共样式与脚本：所有页面只引这两行，不各写一遍 -->
+<link rel="stylesheet" href="lib/xtui/xtui.css">
+<script src="lib/xtui/xtui.js"></script>
+</head>
+<body>
+
+<div class="xtui-header">
+  <div class="xtui-title">星特安全</div>
+</div>
+
+<div id="status"></div>
+<div id="app"></div>
+
+<script>
+var SCHEMA = [
+  { title: '必看', items: [
+    { type: 'button', key: 'warn', label: '必看', variant: 'filled' },
+    { type: 'button', key: 'guide', label: '使用指南' }
+  ] },
+  { title: '授权', items: [
+    { type: 'button', key: 'perm', label: '权限管理' },
+    { type: 'button', key: 'enhance', label: '权限增强' }
+  ] },
+  { title: '功能', items: [
+    { type: 'button', key: 'float', label: '悬浮按钮设置' },
+    { type: 'button', key: 'protect', label: '主动防护' },
+    { type: 'button', key: 'acc', label: '无障碍管理' },
+    { type: 'button', key: 'list', label: '名单管理' },
+    { type: 'button', key: 'scan', label: '安全扫描' },
+    { type: 'button', key: 'killad', label: '广告拦截' },
+    { type: 'button', key: 'process', label: '进程管理' }
+  ] },
+  { title: '关于应用', items: [
+    { type: 'button', key: 'blog', label: '官方博客' },
+    { type: 'button', key: 'github', label: '开源仓库' },
+    { type: 'button', key: 'update_log', label: '更新日志' },
+    { type: 'button', key: 'check_update', label: '检查更新' }
+  ] },
+  { title: '界面', items: [
+    { type: 'button', key: 'ui_mode', label: '界面风格', variant: 'tonal' },
+    { type: 'button', key: 'native', label: '切换回原生界面', variant: 'filled' }
+  ] }
+];
+
+/* ==================== 顶部状态卡片 ==================== */
+
+/*
+ * 数据来自 XT.getStatus()，覆盖 Shizuku / Root / 无障碍 / 通知 / 保活 /
+ * 专版 Shizuku（Stellar）。采集在原生侧后台线程做，这里只负责渲染，
+ * 所以同步调用不会卡 UI；未采集完时返回 {}，全部显示“检查中”。
+ *
+ * 每行左侧是名称，右侧是状态值，颜色按“已就绪 / 未就绪 / 未知”三态区分。
+ */
+var STATUS_ROWS = [
+  { key: 'shizuku', label: 'Shizuku' },
+  { key: 'root', label: 'Root' },
+  { key: 'accessibility', label: '无障碍' },
+  { key: 'notification', label: '通知权限' },
+  { key: 'keepAlive', label: '无障碍保活', bool: true },
+  { key: 'stellar', label: '专版 Shizuku' }
+];
+
+/** 判定状态对应的颜色类：ok=已就绪、warn=未就绪、muted=未知/无需 */
+function statusClass(key, val) {
+  if (val == null || val === '') return 'muted';
+  if (val === '未知') return 'muted';
+  if (val === '无需授权') return 'muted';
+  if (val === '未安装' || val === '未运行') return 'muted';
+  if (key === 'keepAlive') return val ? 'ok' : 'muted';
+  if (val === '已授权' || val === '已开启' || val === '已就绪') return 'ok';
+  if (val === '未授权' || val === '未开启') return 'warn';
+  if (String(val).indexOf('运行中') === 0) return 'ok';
+  return 'muted';
+}
+
+/** keepAlive 是布尔，渲染时转成文字 */
+function statusText(key, val, row) {
+  if (row && row.bool) return val ? '已开启' : '未开启';
+  return (val == null || val === '') ? '检查中…' : String(val);
+}
+
+function renderStatus() {
+  var box = document.getElementById('status');
+  if (!box) return;
+  var s = {};
+  try { s = JSON.parse(XT.getStatus()); } catch (e) { s = {}; }
+
+  var html = '<div class="xtui-card st-card">'
+    + '<div class="xtui-section">运行状态</div>';
+  for (var i = 0; i < STATUS_ROWS.length; i++) {
+    var row = STATUS_ROWS[i];
+    var val = s[row.key];
+    html += '<div class="st-row">'
+      + '<span class="st-label">' + XTUI.esc(row.label) + '</span>'
+      + '<span class="st-value ' + statusClass(row.key, val) + '">'
+      + XTUI.esc(statusText(row.key, val, row)) + '</span>'
+      + '</div>';
+  }
+  html += XTUI.btnHtml('st_refresh', '刷新状态');
+  html += '</div>';
+  box.innerHTML = html;
+
+  var btn = document.getElementById('st_refresh');
+  if (btn) btn.addEventListener('click', function () { XT.refreshStatus(); });
+}
+
+/* ==================== 界面风格选择 ==================== */
+
+var UI_MODES = [
+  { key: 'custom', label: '星特风格', sub: '橙色主题，浅底白卡' },
+  { key: 'mdui', label: 'Material You', sub: 'mdui / MD3 组件，跟随主题色派生' }
+];
+
+function pickUiMode() {
+  if (XTUI.isMenuOpen()) {
+    XTUI.closeMenu();
+    return;
+  }
+  var cur = XTUI.mode();
+  var items = [];
+  for (var i = 0; i < UI_MODES.length; i++) {
+    items.push({
+      key: UI_MODES[i].key,
+      label: UI_MODES[i].label,
+      sub: UI_MODES[i].sub,
+      variant: (UI_MODES[i].key === cur) ? 'filled' : 'text'
+    });
+  }
+  XTUI.menu({
+    anchor: 'ui_mode',
+    align: 'end',
+    items: items,
+    onPick: function (k) { XTUI.setMode(k); }
+  });
+}
+
+function onButton(key) {
+  switch (key) {
+    case 'warn': XT.showWarning(); break;
+    case 'check_update': XT.checkUpdate(); break;
+    case 'ui_mode': pickUiMode(); break;
+    case 'native': XT.switchToNative(); break;
+    default: XT.openPage(key); break;
+  }
+}
+
+XTUI.render(document.getElementById('app'), SCHEMA, {
+  onSwitch: function () {},
+  onSlider: function () {},
+  onMask: function () {},
+  onSave: function () {},
+  onButton: onButton
+});
+
+(function () {
+  var b = document.getElementById('ui_mode');
+  if (b) b.textContent = XTUI.isMdui() ? '界面风格：Material You' : '界面风格：星特风格';
+})();
+
+/* 原生采集完成后回调这里重渲染状态卡 */
+window.XTRefresh = renderStatus;
+renderStatus();
+</script>
+</body>
+</html>

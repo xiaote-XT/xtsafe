@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>安全扫描 - 星特安全</title>
+<!-- 界面风格统一跟随主页，本页不提供切换入口 -->
+<link rel="stylesheet" href="lib/xtui/xtui.css">
+<script src="lib/xtui/xtui.js"></script>
+<style>
+/* 列表型页面：仅补本页专属结构，颜色/圆角/文字层级全部走 xtui 变量 */
+.sc-bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 10px 0;
+}
+.sc-bar span {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: var(--primary);
+  transition: width 0.25s ease;
+}
+.sc-item {
+  padding: 11px 4px;
+  border-bottom: 1px solid var(--border);
+  transition: background-color 0.15s;
+}
+.sc-item:last-child { border-bottom: none; }
+.sc-item:active { background: rgba(255, 106, 0, 0.08); }
+.sc-name { font-size: 15px; font-weight: 600; color: var(--text); }
+.sc-sub { font-size: 11px; color: var(--muted); word-break: break-all; }
+.sc-risk { font-size: 12px; font-weight: 600; }
+.r0 { color: var(--muted); }
+.r1 { color: var(--r1); }
+.r2 { color: var(--r2); }
+.r3 { color: var(--r3); }
+.r4 { color: var(--r4); }
+.sc-detail {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+  max-height: 52vh;
+  overflow: auto;
+  text-align: left;
+  padding: 8px 2px;
+}
+
+html.xtui-mdui .sc-bar { background: rgb(var(--mdui-color-surface-variant)); }
+html.xtui-mdui .sc-bar span { background: rgb(var(--mdui-color-primary)); }
+html.xtui-mdui .sc-item { border-bottom-color: rgb(var(--mdui-color-outline-variant)); }
+html.xtui-mdui .sc-name { color: rgb(var(--mdui-color-on-surface)); font-weight: 500; }
+html.xtui-mdui .sc-sub { color: rgb(var(--mdui-color-on-surface-variant)); }
+html.xtui-mdui .sc-detail { color: rgb(var(--mdui-color-on-surface-variant)); }
+html.xtui-mdui .r1 { color: rgb(var(--mdui-color-primary)); }
+html.xtui-mdui .r3 { color: rgb(var(--mdui-color-error)); }
+html.xtui-mdui .r4 { color: rgb(var(--mdui-color-error)); }
+</style>
+</head>
+<body>
+
+<div class="xtui-header">
+  <div class="xtui-title">安全扫描</div>
+</div>
+
+<div id="app"></div>
+<script>
+var items = [];
+
+function el(id) { return document.getElementById(id); }
+
+function build() {
+  document.getElementById('app').innerHTML =
+    '<div class="xtui-card">'
+    + '<div class="xtui-btn-row">'
+    + XTUI.btnHtml('scanBtn', '扫描已安装应用', 'filled')
+    + XTUI.btnHtml('apkBtn', '选择APK文件')
+    + '</div>'
+    + XTUI.btnHtml('rulesBtn', '规则管理')
+    + '<div class="sc-bar" id="bar" style="display:none"><span id="barIn"></span></div>'
+    + '<div class="xtui-status" id="status">加载应用中…</div>'
+    + '<div id="list"></div>'
+    + '</div>'
+    + '<div class="xtui-card">' + XTUI.btnHtml('back', '返回', 'filled') + '</div>';
+
+  el('scanBtn').addEventListener('click', function () { XT.scanAll(); });
+  el('apkBtn').addEventListener('click', function () { XT.pickApk(); });
+  el('rulesBtn').addEventListener('click', function () { XT.openRules(); });
+  el('back').addEventListener('click', function () { XT.close(); });
+}
+
+function riskClass(r) {
+  if (r >= 4) return 'r4';
+  if (r === 3) return 'r3';
+  if (r === 2) return 'r2';
+  if (r === 1) return 'r1';
+  return 'r0';
+}
+
+function load() {
+  try { items = JSON.parse(XT.getList()); } catch (e) { items = []; }
+  var status = el('status');
+  if (status) {
+    var scanning = false;
+    try { scanning = XT.isScanning(); } catch (e) {}
+    status.textContent = scanning ? '扫描中…' : ('共 ' + items.length + ' 个应用');
+  }
+  render();
+}
+
+function render() {
+  var box = el('list');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!items.length) {
+    var e = document.createElement('div');
+    e.className = 'xtui-empty';
+    e.textContent = '暂无应用';
+    box.appendChild(e);
+    return;
+  }
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    var d = document.createElement('div');
+    d.className = 'sc-item';
+    d.setAttribute('data-i', String(i));
+    var risk = (it.scanned && it.riskText)
+      ? '<div class="sc-risk ' + riskClass(it.risk) + '">' + XTUI.esc(it.riskText) + '</div>'
+      : '';
+    d.innerHTML = '<div class="sc-name">' + XTUI.esc(it.appName) + '</div>'
+      + '<div class="sc-sub">' + XTUI.esc(it.pkg) + '</div>'
+      + risk;
+    d.addEventListener('click', onItem);
+    box.appendChild(d);
+  }
+}
+
+/* 统一走 xtui 的带动画上拉菜单（滑入/滑出 + 遮罩淡入） */
+function overlay(html) {
+  XTUI.openSheetHtml(html);
+}
+
+function closeSheet() {
+  XTUI.closeSheet();
+}
+
+function onItem() {
+  var i = parseInt(this.getAttribute('data-i'), 10);
+  var it = items[i];
+  if (!it) return;
+
+  if (!it.scanned) {
+    overlay('<div class="xtui-section">' + XTUI.esc(it.appName) + '</div>'
+      + '<div class="xtui-status">' + XTUI.esc(it.pkg) + '</div>'
+      + '<div class="xtui-status">尚未扫描</div>'
+      + XTUI.btnHtml('doScan', '立即扫描', 'filled')
+      + XTUI.btnHtml('doCancel', '取消'));
+    el('doCancel').addEventListener('click', closeSheet);
+    el('doScan').addEventListener('click', function () {
+      closeSheet();
+      XT.scanOne(it.pkg);
+    });
+    return;
+  }
+
+  overlay('<div class="xtui-section">' + XTUI.esc(it.appName) + '</div>'
+    + '<div class="sc-detail">' + XTUI.esc(it.summary || '') + '</div>'
+    + XTUI.btnHtml('doDetail', '详细')
+    + XTUI.btnHtml('doDelete', '卸载')
+    + XTUI.btnHtml('doClose', '关闭', 'filled'));
+
+  el('doClose').addEventListener('click', closeSheet);
+  el('doDetail').addEventListener('click', function () {
+    overlay('<div class="xtui-section">' + XTUI.esc(it.appName) + '</div>'
+      + '<div class="sc-detail">' + XTUI.esc(it.detail || '无') + '</div>'
+      + XTUI.btnHtml('doClose2', '关闭', 'filled'));
+    el('doClose2').addEventListener('click', closeSheet);
+  });
+  el('doDelete').addEventListener('click', function () {
+    closeSheet();
+    XT.uninstall(it.pkg);
+  });
+}
+
+window.XTRefresh = load;
+window.XTSetProgress = function (cur, total, text) {
+  var bar = el('bar');
+  if (bar) bar.style.display = 'block';
+  var pct = total > 0 ? Math.round(cur * 100 / total) : 0;
+  var inn = el('barIn');
+  if (inn) inn.style.width = pct + '%';
+  var s = el('status');
+  if (s) s.textContent = text + '（' + cur + '/' + total + '）';
+};
+window.XTScanDone = function () {
+  var bar = el('bar');
+  if (bar) bar.style.display = 'none';
+  var inn = el('barIn');
+  if (inn) inn.style.width = '0%';
+  load();
+};
+
+build();
+load();
+</script>
+</body>
+</html>

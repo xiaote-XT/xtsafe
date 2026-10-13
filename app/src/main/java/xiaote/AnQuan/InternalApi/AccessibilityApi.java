@@ -216,6 +216,27 @@ public final class AccessibilityApi {
         return writeList(ctx, keep.toString());
     }
 
+    /**
+     * 把指定组件加入启用列表（不存在则追加，已存在则原样返回）。
+     *
+     * 与 enableSelf 的区别：本方法接受任意组件字符串，供「无障碍保护方案」
+     * 在强力模式下把被关掉的第三方无障碍服务重新加回列表。
+     */
+    public static ApiResult enableComponent(Context ctx, String comp) {
+        if (ctx == null || comp == null || comp.length() == 0) {
+            return ApiResult.unsupported("ctx / comp 为空");
+        }
+        Set<String> current = listEnabled(ctx);
+        String prefix = null;
+        int idx = comp.indexOf('/');
+        if (idx > 0) prefix = comp.substring(0, idx) + "/";
+        for (String c : current) {
+            if (c.equals(comp)) return ApiResult.success(null, "已在启用列表");
+        }
+        String target = current.isEmpty() ? comp : (join(current) + ":" + comp);
+        return writeList(ctx, target);
+    }
+
     /** 把组件列表字符串写入 Settings.Secure，并顺带把 accessibility_enabled 置 1 */
     private static ApiResult writeList(Context ctx, String list) {
         String v = (list == null) ? "" : list;

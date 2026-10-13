@@ -31,20 +31,129 @@ import java.util.regex.Pattern;
  */
 public class OverlayDetector {
 
-    /** 连续命中次数阈值 */
+    /** 连续命中次数阈值（标准力度） */
     public static final int CONFIRM_TIMES = 2;
     /** 面积占比阈值（0.90） */
     private static final float AREA_RATIO = 0.90f;
 
-    /** 需要重点关注的窗口类型 */
-    private static final Set<Integer> OVERLAY_TYPES = new HashSet<Integer>();
+    /**
+     * 拦截力度。
+     *
+     *   false 标准（默认）—— 连续 CONFIRM_TIMES 次命中才确认，抗瞬时动画误判；
+     *   true  敏感         —— 一次命中即确认，不累计、不等待，
+     *                        配合 XTSafeMainService 的 1 秒扫描间隔使用。
+     *
+     * 敏感模式不改变候选筛选口径（类型 / 面积 / 可见性 / 排除规则全部照旧），
+     * 只是把「需要连续命中几次」这一道门降到 1 次。
+     */
+    public static boolean sensitiveMode = false;
+
+    /** 系统窗口类型区间（WindowManager.LayoutParams.FIRST/LAST_SYSTEM_WINDOW） */
+    private static final int TYPE_SYS_MIN = 2000;
+    private static final int TYPE_SYS_MAX = 2999;
+
+    /**
+     * 安全类型名单：这些系统装饰窗口不参与全屏覆盖判定。
+     *
+     * 用「名字」而不是「数值」维护。dumpsys 的 ty= 有的版本输出数字、
+     * 有的版本输出常量名，数值还可能随 ROM 变化；常量名是 AOSP 的稳定标识。
+     * 名字与数值的对应关系由下面的反射表在运行时自动建立，不用手写。
+     */
+    private static final Set<String> SAFE_TYPE_NAMES = new HashSet<String>();
     static {
-        OVERLAY_TYPES.add(2002); // TYPE_SYSTEM_OVERLAY
-        OVERLAY_TYPES.add(2003); // TYPE_SYSTEM_ALERT
-        OVERLAY_TYPES.add(2006); // TYPE_SYSTEM_ERROR
-        OVERLAY_TYPES.add(2010); // TYPE_SYSTEM_OVERLAY (旧)
-        OVERLAY_TYPES.add(2032); // TYPE_ACCESSIBILITY_OVERLAY
-        OVERLAY_TYPES.add(2038); // TYPE_APPLICATION_OVERLAY
+        SAFE_TYPE_NAMES.add("STATUS_BAR");
+        SAFE_TYPE_NAMES.add("SEARCH_BAR");
+        SAFE_TYPE_NAMES.add("KEYGUARD");
+        SAFE_TYPE_NAMES.add("TOAST");
+        SAFE_TYPE_NAMES.add("PRIORITY_PHONE");
+        SAFE_TYPE_NAMES.add("SYSTEM_DIALOG");
+        SAFE_TYPE_NAMES.add("KEYGUARD_DIALOG");
+        SAFE_TYPE_NAMES.add("INPUT_METHOD");
+        SAFE_TYPE_NAMES.add("INPUT_METHOD_DIALOG");
+        SAFE_TYPE_NAMES.add("WALLPAPER");
+        SAFE_TYPE_NAMES.add("STATUS_BAR_PANEL");
+        SAFE_TYPE_NAMES.add("STATUS_BAR_SUB_PANEL");
+        SAFE_TYPE_NAMES.add("SECURE_SYSTEM_OVERLAY");
+        SAFE_TYPE_NAMES.add("DRAG");
+        SAFE_TYPE_NAMES.add("POINTER");
+        SAFE_TYPE_NAMES.add("NAVIGATION_BAR");
+        SAFE_TYPE_NAMES.add("NAVIGATION_BAR_PANEL");
+        SAFE_TYPE_NAMES.add("VOLUME_OVERLAY");
+        SAFE_TYPE_NAMES.add("BOOT_PROGRESS");
+        SAFE_TYPE_NAMES.add("MAGNIFICATION_OVERLAY");
+        SAFE_TYPE_NAMES.add("ACCESSIBILITY_MAGNIFICATION_OVERLAY");
+        SAFE_TYPE_NAMES.add("DISPLAY_OVERLAY");
+        SAFE_TYPE_NAMES.add("LOGICAL_DISPLAY_DECORATION");
+        SAFE_TYPE_NAMES.add("VOICE_INTERACTION");
+        SAFE_TYPE_NAMES.add("PRIVATE_PRESENTATION");
+    }
+
+    /* ==================== 窗口类型名 / 数值自动映射 ==================== */
+
+    private static Map<String, Integer> sNameToVal;
+    private static Map<Integer, String> sValToName;
+
+    /**
+     * 反射 WindowManager.LayoutParams 的 TYPE_* 常量，自动建立「名字 ↔ 数值」双向表。
+     *
+     * 这是通配的关键：不再手写映射表。新 ROM 新增的类型只要常量名存在就能被识别，
+     * 数值与名字的对应也不会写错。
+     *
+     * 反射失败（极端裁剪 ROM 或黑名单拦截）时退化为空表，
+     * typeFromToken 仍有前缀与区间兜底，不会崩、也不会因此漏判。
+     */
+    private static synchronized void ensureTypeTable() {
+        if (sNameToVal != null) return;
+        Map<String, Integer> n2v = new HashMap<String, Integer>();
+        Map<Integer, String> v2n = new HashMap<Integer, String>();
+        try {
+            java.lang.reflect.Field[] fs =
+                    android.view.WindowManager.LayoutParams.class.getDeclaredFields();
+            for (java.lang.reflect.Field f : fs) {
+                if (f == null) continue;
+                int mod = f.getModifiers();
+                if (!java.lang.reflect.Modifier.isStatic(mod)) continue;
+                if (f.getType() != int.class) continue;
+                String n = f.getName();
+                if (n == null || !n.startsWith("TYPE_")) continue;
+                try {
+                    f.setAccessible(true);
+                    int v = f.getInt(null);
+                    String key = n.substring(5).toUpperCase(java.util.Locale.US);
+                    n2v.put(key, v);
+                    if (!v2n.containsKey(v)) v2n.put(v, key);
+                } catch (Throwable ignored) {}
+            }
+        } catch (Throwable ignored) {}
+        sNameToVal = n2v;
+        sValToName = v2n;
+    }
+
+    /** 数值 → 常量名（去 TYPE_ 前缀、大写）；查不到返回 null */
+    private static String typeName(int type) {
+        ensureTypeTable();
+        return sValToName.get(type);
+    }
+
+    /**
+     * 是否属于需要关注的覆盖窗口类型。
+     *
+     * 旧实现用固定白名单（2002/2003/2006/2010/2032/2038），
+     * 实际漏掉大量 ROM 自行分配的覆盖类型，也容易把类型写错
+     * （2002 其实是 TYPE_PHONE，不是注释里写的 TYPE_SYSTEM_OVERLAY；
+     * 靠白名单恰好命中，换成别的 ROM 分配的类型就直接漏判）。
+     *
+     * 现在改为「系统窗口区间内、且不在安全名单里」：
+     * TYPE_PHONE(2002)、TYPE_SYSTEM_ALERT(2003)、TYPE_SYSTEM_OVERLAY(2006)、
+     * TYPE_SYSTEM_ERROR(2010)、TYPE_ACCESSIBILITY_OVERLAY(2032)、
+     * TYPE_APPLICATION_OVERLAY(2038) 以及各 ROM 的 2xxx 覆盖都能命中。
+     */
+    public static boolean isOverlayType(int type) {
+        if (type < TYPE_SYS_MIN || type > TYPE_SYS_MAX) return false;
+        String name = typeName(type);
+        // 名字查得到且在安全名单里 → 排除；查不到名字的按候选处理
+        if (name != null && SAFE_TYPE_NAMES.contains(name)) return false;
+        return true;
     }
 
     /** 系统/界面基础包名，永不判定 */
@@ -63,7 +172,53 @@ public class OverlayDetector {
     // 注意：此处不再使用含花括号的窗口行正则（Java 正则中未转义的 } 会抛 PatternSyntaxException），
     // 窗口行改为纯字符串判断 + 手动切分提取包名。
     private static final Pattern P_PACKAGE = Pattern.compile("package=([^ ]+)");
-    private static final Pattern P_TYPE = Pattern.compile("\\bty=(\\d+)\\b");
+    /**
+     * 窗口类型：新版 dumpsys 输出常量名（ty=APPLICATION_OVERLAY），
+     * 旧版输出数字（ty=2038），两种都要认。
+     */
+    private static final Pattern P_TYPE = Pattern.compile("\\bty=([A-Za-z0-9_]+)");
+    /** 兼容新版：Frames 行里的 frame=[l,t][r,b]（新版不再输出 mFrame=） */
+    private static final Pattern P_FRAME_LOOSE =
+            Pattern.compile("\\bframe=\\[(-?\\d+),(-?\\d+)\\]\\[(-?\\d+),(-?\\d+)\\]");
+
+    /**
+     * 窗口类型 token → 数值。
+     *
+     * 数字直接解析；常量名去 TYPE_ 前缀后查表；
+     * 认不出的系统窗口常量统一给 2500（仍在 2000-2999 区间内，
+     * 按候选覆盖处理），由安全名单、面积、可见性、第三方应用继续过滤。
+     */
+    public static int typeFromToken(String token) {
+        if (token == null || token.isEmpty()) return 0;
+        char c0 = token.charAt(0);
+        if (c0 >= '0' && c0 <= '9') {
+            try { return Integer.parseInt(token); } catch (Exception ignored) { return 0; }
+        }
+        String t = token.toUpperCase(java.util.Locale.US);
+        if (t.startsWith("TYPE_")) t = t.substring(5);
+        /*
+         * 先查反射表。
+         *
+         * 表里是 LayoutParams 的全部 TYPE_* 常量，因此
+         * APPLICATION_OVERLAY、SYSTEM_ALERT、ACCESSIBILITY_OVERLAY、
+         * NAVIGATION_BAR、BASE_APPLICATION(1) 等等全都自动命中，
+         * 不需要为任何新类型补代码 —— 应用类窗口的常量值本身就是 1~4 这类
+         * 小数字，天然落在系统窗口区间之外。
+         */
+        ensureTypeTable();
+        Integer v = sNameToVal.get(t);
+        if (v != null) return v;
+        /*
+         * 表里没有（反射被禁，或 ROM 自造的极新常量）时按前缀兜底：
+         * 应用类窗口统一降为非系统值，其余按候选覆盖处理。
+         */
+        if ("SUB_PANEL".equals(t)) return 1000;
+        if (t.startsWith("BASE_APPLICATION")) return 1;
+        if (t.startsWith("DRAWN_APPLICATION")) return 1;
+        if (t.startsWith("APPLICATION_")) return 1000;
+        if ("APPLICATION".equals(t)) return 1;
+        return 2500;
+    }
     /*
      * 窗口矩形：实际 dumpsys 输出是「mFrame=[l,t][r,b] last=[l,t][r,b]」，
      * 没有无前缀的 frame=。旧正则写 frame=\[...\] 恒不匹配，
@@ -162,7 +317,7 @@ public class OverlayDetector {
         Set<String> currentHit = new HashSet<String>();
         for (OverlayWindow w : all) {
             if (!w.visible) continue;
-            if (!OVERLAY_TYPES.contains(w.type)) continue;
+            if (!isOverlayType(w.type)) continue;
             if (w.width() <= 0 || w.height() <= 0) continue;
             // 面积占比 ≥ 90%%（宽高都需达标）
             if (w.width() < screenW * AREA_RATIO) continue;
@@ -183,8 +338,10 @@ public class OverlayDetector {
         }
         for (String pkg : toRemove) hitCounter.remove(pkg);
 
+        // 敏感力度只需 1 次命中即确认；标准力度保持 CONFIRM_TIMES 次
+        int need = sensitiveMode ? 1 : CONFIRM_TIMES;
         for (Map.Entry<String, Integer> e : hitCounter.entrySet()) {
-            if (e.getValue() >= CONFIRM_TIMES) confirmed.add(e.getKey());
+            if (e.getValue() >= need) confirmed.add(e.getKey());
         }
         return confirmed;
     }
@@ -197,7 +354,7 @@ public class OverlayDetector {
         for (OverlayWindow w : all) {
             if (!pkg.equals(w.packageName)) continue;
             if (!w.visible) continue;
-            if (!OVERLAY_TYPES.contains(w.type)) continue;
+            if (!isOverlayType(w.type)) continue;
             if (w.width() >= screenW * AREA_RATIO && w.height() >= screenH * AREA_RATIO) return true;
         }
         return false;
@@ -245,11 +402,18 @@ public class OverlayDetector {
             if (mp.find()) { cur.packageName = mp.group(1); continue; }
             Matcher mt = P_TYPE.matcher(line);
             if (mt.find()) {
-                try { cur.type = Integer.parseInt(mt.group(1)); } catch (Exception ignored) {}
+                // 新版 dumpsys 输出常量名（ty=APPLICATION_OVERLAY），旧版输出数字
+                cur.type = typeFromToken(mt.group(1));
                 continue;
             }
-            /* 窗口矩形：dumpsys 输出形如 mFrame=[l,t][r,b] last=[l,t][r,b] */
+            /*
+             * 窗口矩形两种写法：
+             *   旧版 mFrame=[l,t][r,b] last=[l,t][r,b]；
+             *   新版只在 Frames: 行里给 frame=[l,t][r,b]。
+             * 只认前者会让所有窗口宽高为 0，面积判定直接失败。
+             */
             Matcher mf = P_FRAME.matcher(line);
+            if (!mf.find()) mf = P_FRAME_LOOSE.matcher(line);
             if (mf.find() && cur.right == 0 && cur.bottom == 0) {
                 try {
                     cur.left = Integer.parseInt(mf.group(1));
@@ -314,7 +478,19 @@ public class OverlayDetector {
             if ((ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0) return true;
             if ((ai.flags & ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0) return true;
         } catch (Exception e) {
-            return true; // 查不到信息的一律不处理
+            /*
+             * 查不到 ApplicationInfo 时不再直接放过。
+             *
+             * 旧实现这里 return true（当成系统应用排除），本意是降低误判，
+             * 实际后果是：只要 PackageManager 查询出现一次瞬时失败
+             * （包可见性、安装态变化、查询超时），这个包就被静默跳过，
+             * 全屏覆盖拦截直接失效且没有任何痕迹 —— 正是「明明盖着屏幕却抓不到」。
+             *
+             * 现在返回 false（不排除），继续交给类型/面积/可见性三道判定过滤；
+             * 真正的系统装饰窗口已被 SAFE_TYPES 与 EXCLUDE_PREFIX 挡在外面，
+             * 不会因此误杀。
+             */
+            return false;
         }
         return false;
     }

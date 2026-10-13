@@ -34,6 +34,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import xiaote.AnQuan.InternalApi.AccessibilityApi;
+
 public class XTSafeMainService extends AccessibilityService implements BroadcastRegistrar.Host {
 
     private PackageManager pm;
@@ -66,6 +68,10 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
     private boolean forceTopRunning = false;
     /** 按键过滤 flag 周期复检任务 */
     private Runnable keyFilterWatchTask;
+    /** 无障碍保护方案·强力模式的每秒检查任务 */
+    private Runnable accProtectTask;
+    /** 强力模式防重入 */
+    private volatile boolean accProtectRunning = false;
 
     // 广播注册（拆分为 BroadcastRegistrar）
     private BroadcastRegistrar broadcastRegistrar;
@@ -82,8 +88,35 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
     private OverlayDetector overlayDetector;
     private volatile boolean overlayScanRunning = false;
     private Runnable overlayScanTask;
+    /**
+     * 敏感力度下已处置过的包名。
+     *
+     * 敏感模式每秒扫一次、命中即拦，若不做去重，同一个覆盖窗口会在被彻底
+     * 关掉之前被反复强制停止 + 冻结。这里记一份「已经处置过」的包名，
+     * 本轮覆盖消失后移除，下次它再出现才会被重新拦截。
+     */
+    private final Set<String> overlayBlockedPkgs =
+            java.util.Collections.synchronizedSet(new HashSet<String>());
     /** 全屏覆盖检测独立循环间隔（毫秒） */
-    private static final long OVERLAY_SCAN_INTERVAL_MS = 1500L;
+    /** 全屏覆盖扫描间隔：标准力度（毫秒） */
+    private static final long OVERLAY_SCAN_INTERVAL_STD_MS = 1500L;
+    /** 全屏覆盖扫描间隔：敏感力度（毫秒），每秒一次 */
+    private static final long OVERLAY_SCAN_INTERVAL_SENSITIVE_MS = 1000L;
+    /** 全屏覆盖拦截力度偏好键：standard / sensitive */
+    public static final String KEY_OVERLAY_BLOCK_MODE = "overlay_block_mode";
+    /** 标准力度（默认） */
+    public static final String OVERLAY_MODE_STANDARD = "standard";
+    /** 敏感力度 */
+    public static final String OVERLAY_MODE_SENSITIVE = "sensitive";
+
+    /** 无障碍保护方案偏好键：standard / strong */
+    public static final String KEY_ACC_PROTECT_MODE = "acc_protect_mode";
+    /** 标准方案（默认）：沿用原有事件驱动 + 后台重活时恢复 */
+    public static final String ACC_PROTECT_MODE_STANDARD = "standard";
+    /** 强力方案：每秒检查一次，被关闭立即恢复 */
+    public static final String ACC_PROTECT_MODE_STRONG = "strong";
+    /** 强力方案检查间隔（毫秒） */
+    private static final long ACC_PROTECT_STRONG_INTERVAL_MS = 1000L;
     /** 阻止卸载检查独立循环（毫秒）：与最低 0.1 秒一次对齐 */
     private Runnable blockCheckTask;
     private static final long BLOCK_CHECK_INTERVAL_MS = 100L;
@@ -152,6 +185,7 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
         runBackgroundWork(false);
         startForceTopTask();
         startOverlayScanTask();
+        startAccProtectTask();
         // 音量阈值检测 / 阻止卸载周期任务已统一由 XTSafeCoreService 负责，
         // 此处不再重复启动，避免双份循环。
 
@@ -814,7 +848,24 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
         }
     }
 
-    /** 启动全屏覆盖检测独立循环（每 3 秒一次） */
+    /** 当前全屏覆盖扫描间隔：敏感力度 1 秒，标准力度 1.5 秒 */
+    private long currentOverlayInterval() {
+        try {
+            return OVERLAY_MODE_SENSITIVE.equals(
+                    dotPrefs.getString(KEY_OVERLAY_BLOCK_MODE, OVERLAY_MODE_STANDARD))
+                    ? OVERLAY_SCAN_INTERVAL_SENSITIVE_MS
+                    : OVERLAY_SCAN_INTERVAL_STD_MS;
+        } catch (Throwable t) {
+            return OVERLAY_SCAN_INTERVAL_STD_MS;
+        }
+    }
+
+    /**
+     * 启动全屏覆盖检测独立循环。
+     *
+     * 每轮都重读间隔：用户在「安全防护」里切换力度后不必重启服务，
+     * 下一轮就按新间隔走。
+     */
     private void startOverlayScanTask() {
         stopOverlayScanTask();
         overlayScanTask = new Runnable() {
@@ -825,12 +876,12 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
                 } catch (Exception ignored) {
                 } finally {
                     if (overlayScanTask != null && handler != null) {
-                        handler.postDelayed(this, OVERLAY_SCAN_INTERVAL_MS);
+                        handler.postDelayed(this, currentOverlayInterval());
                     }
                 }
             }
         };
-        handler.postDelayed(overlayScanTask, OVERLAY_SCAN_INTERVAL_MS);
+        handler.postDelayed(overlayScanTask, currentOverlayInterval());
     }
 
     private void stopOverlayScanTask() {
@@ -838,6 +889,104 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
             handler.removeCallbacks(overlayScanTask);
             overlayScanTask = null;
         }
+    }
+
+    // ==================== 无障碍保护方案 ====================
+
+    /** 当前保护方案：standard 标准 / strong 强力 */
+    private String accProtectMode() {
+        try {
+            return dotPrefs.getString(KEY_ACC_PROTECT_MODE, ACC_PROTECT_MODE_STANDARD);
+        } catch (Throwable t) {
+            return ACC_PROTECT_MODE_STANDARD;
+        }
+    }
+
+    /**
+     * 强力模式检查循环。
+     *
+     * 每 1 秒读一次系统启用列表，找出「用户设为『允许（自动保活）』、
+     * 但当前不在列表里」的第三方无障碍服务，逐个加回。
+     *
+     * 只处理 MODE_ALLOW，不动 MODE_FORBIDDEN / MODE_LOCK_FORBID / MODE_SMART ——
+     * 那三种的「关闭」是用户主动要求的，不能被保护逻辑顶回去。
+     *
+     * 标准方案下本循环空转（只做一次字符串比较），不产生额外跨进程调用。
+     */
+    private void startAccProtectTask() {
+        stopAccProtectTask();
+        accProtectTask = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (ACC_PROTECT_MODE_STRONG.equals(accProtectMode())) {
+                        checkAccProtectStrong();
+                    }
+                } catch (Throwable ignored) {
+                } finally {
+                    if (accProtectTask != null && handler != null) {
+                        handler.postDelayed(this, ACC_PROTECT_STRONG_INTERVAL_MS);
+                    }
+                }
+            }
+        };
+        handler.postDelayed(accProtectTask, ACC_PROTECT_STRONG_INTERVAL_MS);
+    }
+
+    private void stopAccProtectTask() {
+        if (accProtectTask != null && handler != null) {
+            handler.removeCallbacks(accProtectTask);
+            accProtectTask = null;
+        }
+    }
+
+    /**
+     * 强力模式：找出被关掉的「允许保活」应用并立即恢复。
+     *
+     * 组件列表读取与写回都是跨进程调用，整体丢到工作线程，
+     * 每秒最多一次，且用 accProtectRunning 防重入，避免上一轮没跑完就叠加。
+     */
+    private void checkAccProtectStrong() {
+        if (accProtectRunning) return;
+        if (accessibilityRecoverLock) return;   // 置顶循环正在移除→加回，避免抢写
+        accProtectRunning = true;
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Set<String> enabled = AccessibilityApi.listEnabled(getApplicationContext());
+                    Set<String> enabledPkgs = new HashSet<String>();
+                    for (String c : enabled) {
+                        int idx = c.indexOf('/');
+                        if (idx > 0) enabledPkgs.add(c.substring(0, idx));
+                    }
+                    android.view.accessibility.AccessibilityManager am =
+                            (android.view.accessibility.AccessibilityManager)
+                                    getSystemService(ACCESSIBILITY_SERVICE);
+                    if (am == null) return;
+                    List<android.accessibilityservice.AccessibilityServiceInfo> services =
+                            am.getInstalledAccessibilityServiceList();
+                    if (services == null) return;
+                    Set<String> virusPkgs = VirusPackages.getVirusPackages(getApplicationContext());
+                    virusPkgs.addAll(VirusPackages.getManagedPackages(getApplicationContext()));
+                    for (android.accessibilityservice.AccessibilityServiceInfo info : services) {
+                        if (info == null || info.getResolveInfo() == null) continue;
+                        String pkg = info.getResolveInfo().serviceInfo.packageName;
+                        if (pkg == null || pkg.equals(getPackageName())) continue;
+                        if (virusPkgs.contains(pkg)) continue;
+                        if (enabledPkgs.contains(pkg)) continue;
+                        int mode = dotPrefs.getInt("acc_mode_" + pkg, -1);
+                        if (mode != AccessibilityManagerActivity.MODE_ALLOW) continue;
+                        String comp = pkg + "/" + info.getResolveInfo().serviceInfo.name;
+                        AccessibilityApi.enableComponent(getApplicationContext(), comp);
+                        Log.d(TAG, "强力保活：恢复 " + comp);
+                    }
+                } catch (Throwable ignored) {
+                } finally {
+                    accProtectRunning = false;
+                }
+            }
+        }, "acc-protect-strong").start();
     }
 
     /** 启动“阻止卸载/阻止阻止卸载”独立检查循环（每 100ms 一次，内部按用户设定频率节流） */
@@ -872,15 +1021,46 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
             if (!dotPrefs.getBoolean("block_overlay", true)) return;
             if (overlayDetector == null || !overlayDetector.isAvailable()) return;
             if (overlayScanRunning) return;
+
+            final boolean sensitive = OVERLAY_MODE_SENSITIVE.equals(
+                    dotPrefs.getString(KEY_OVERLAY_BLOCK_MODE, OVERLAY_MODE_STANDARD));
+            // 同步给检测器：敏感模式一次命中即确认，不走连续累计
+            OverlayDetector.sensitiveMode = sensitive;
+
             overlayScanRunning = true;
             new Thread(new Runnable() {
                 @Override
                 public void run() {
                     try {
                         java.util.List<String> targets = overlayDetector.scanConfirmed();
+
+                        if (sensitive) {
+                            // 覆盖已消失的包名从去重表移除，它再出现时可重新拦截
+                            java.util.Set<String> stillHere = new java.util.HashSet<String>();
+                            if (targets != null) stillHere.addAll(targets);
+                            java.util.List<String> gone = new java.util.ArrayList<String>();
+                            synchronized (overlayBlockedPkgs) {
+                                for (String p : overlayBlockedPkgs) {
+                                    if (!stillHere.contains(p)) gone.add(p);
+                                }
+                            }
+                            overlayBlockedPkgs.removeAll(gone);
+                        }
+
                         if (targets == null || targets.isEmpty()) return;
                         for (String pkg : targets) {
-                            // 复检：窗口仍存在才处置，避免瞬时动画/切换误判
+                            /*
+                             * 敏感力度：出现即拦，跳过复检、不等第二轮；
+                             * 同一包名在覆盖消失前只处置一次，避免每秒重复冻结。
+                             */
+                            if (sensitive) {
+                                if (overlayBlockedPkgs.contains(pkg)) continue;
+                                overlayBlockedPkgs.add(pkg);
+                                overlayDetector.clear(pkg);
+                                blockOverlayApp(pkg);
+                                continue;
+                            }
+                            // 标准力度：保持原有「复检仍存在才处置」的抗误判逻辑
                             if (!overlayDetector.stillCovering(pkg)) {
                                 overlayDetector.clear(pkg);
                                 continue;
@@ -897,26 +1077,100 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
         } catch (Exception ignored) {}
     }
 
-    /** 处置全屏覆盖应用：强制停止 + 冻结，并写入拦截日志 */
+    /**
+     * 处置全屏覆盖应用：强制停止 + 冻结，结果以通知告知并写入拦截日志。
+     *
+     * 为什么改通知而不是 Toast：Toast 只在当前前台界面短暂显示，
+     * 而覆盖窗口出现时用户多半正在被遮挡的界面上，Toast 极易被盖住或错过；
+     * 通知留在通知栏可回看，也能被 TalkBack 等辅助功能读到。
+     */
     private void blockOverlayApp(final String pkg) {
         String appName = pkg;
         try {
             appName = pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString();
         } catch (Exception ignored) {}
+        /*
+         * 走 SafeActionManager 的完整冻结链路，不再用 ShellExecutor.freezeApp。
+         *
+         * ShellExecutor.freezeApp 是早期简化版，只发一条
+         * `pm disable --user 0 <pkg>`，然后看退出码：
+         *   · 没有 disable-user 这一级 —— 多数 ROM 上第三方应用要靠
+         *     `pm disable-user --user 0` 才真正生效，`pm disable` 经常
+         *     返回 0 但包仍是 enabled；
+         *   · 没有 force-stop 的同步等待；
+         *   · 没有 `pm list packages -d` 回读校验。
+         * 覆盖窗口所属应用此刻正前台运行，上面三点叠加，判定基本必然是「未成功」。
+         *
+         * 安全操作（音量阈值 / 连按音量键 / 时间回拨）走的是
+         * SafeActionManager.freezePackages → freezeOne：先 force-stop，
+         * 再依次试 disable-user → disable → Root，每一级都用输出 + 回读双重判定。
+         * 同一个包在那边能成功、这里不行，差别就在这里。
+         *
+         * 现在改为复用同一条链路，两处口径一致。
+         */
         boolean stopped = ShellExecutor.forceStopApp(pkg);
-        boolean frozen = ShellExecutor.freezeApp(pkg);
-        final String toastName = appName;
-        handler.post(new Runnable() {
-            @Override
-            public void run() {
-                Toast.makeText(XTSafeMainService.this,
-                        getString(R.string.overlay_blocked, toastName), Toast.LENGTH_LONG).show();
-            }
-        });
+        boolean frozen = SafeActionManager.freezeOnePublic(pkg);
+        sendOverlayBlockNotify(appName, pkg, stopped, frozen);
         OverlayBlockLogger.log(this, "BLOCK", "包名=" + pkg
                 + " 应用名=" + appName
                 + " 强制停止=" + stopped
                 + " 冻结=" + frozen);
+    }
+
+    /** 全屏覆盖拦截通知渠道 */
+    private static final String OVERLAY_CHANNEL_ID = "overlay_block";
+    /** 全屏覆盖拦截通知 id：固定值，后一次拦截覆盖前一次，不堆通知栏 */
+    private static final int OVERLAY_NOTIFY_ID = 0x5A10;
+
+    /**
+     * 拦截结果通知。
+     *
+     * 标题固定「星特安全拦截一次操作」，正文给全应用名、包名、处置动作与时间。
+     * 用 BigTextStyle，折叠态只显示一行摘要，展开可见完整信息。
+     *
+     * 通知 id 固定：连续拦截多个应用时后一条覆盖前一条，避免刷屏；
+     * 完整的拦截流水仍由 OverlayBlockLogger 落到日志文件里。
+     */
+    private void sendOverlayBlockNotify(String appName, String pkg,
+                                        boolean stopped, boolean frozen) {
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm == null) return;
+            if (Build.VERSION.SDK_INT >= 26) {
+                NotificationChannel ch = new NotificationChannel(OVERLAY_CHANNEL_ID,
+                        "全屏覆盖拦截", NotificationManager.IMPORTANCE_HIGH);
+                ch.setDescription("检测到全屏覆盖应用并处置时提醒");
+                ch.enableVibration(true);
+                nm.createNotificationChannel(ch);
+            }
+            String time = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss",
+                    java.util.Locale.US).format(new java.util.Date());
+            String action = (stopped ? "已强制停止" : "强制停止未成功")
+                    + "，" + (frozen ? "已冻结" : "冻结未成功");
+            String detail = "应用：" + appName
+                    + "\n包名：" + pkg
+                    + "\n处置：" + action
+                    + "\n时间：" + time;
+
+            Intent open = new Intent(this, MainActivity.class);
+            open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            PendingIntent pi = PendingIntent.getActivity(this, OVERLAY_NOTIFY_ID, open,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+            Notification.Builder b = Build.VERSION.SDK_INT >= 26
+                    ? new Notification.Builder(this, OVERLAY_CHANNEL_ID)
+                    : new Notification.Builder(this);
+            b.setSmallIcon(android.R.drawable.ic_menu_view)
+                    .setContentTitle("星特安全拦截一次操作")
+                    .setContentText("全屏覆盖：" + appName + "（" + action + "）")
+                    .setStyle(new Notification.BigTextStyle().bigText(detail))
+                    .setContentIntent(pi)
+                    .setAutoCancel(true)
+                    .setOnlyAlertOnce(false)
+                    .setPriority(Notification.PRIORITY_HIGH)
+                    .setWhen(System.currentTimeMillis());
+            nm.notify(OVERLAY_NOTIFY_ID, b.build());
+        } catch (Throwable ignored) {}
     }
 
     private void checkAndRecoverAccessibility() {
@@ -1014,6 +1268,7 @@ public class XTSafeMainService extends AccessibilityService implements Broadcast
         stopForceTopTask();
         stopOverlayScanTask();
         stopBlockCheckTask();
+        stopAccProtectTask();
         stopKeyFilterWatch();
         if (protectionVolumeThreshold != null) protectionVolumeThreshold.stop();
         if (broadcastRegistrar != null) broadcastRegistrar.unregisterAll();

@@ -43,6 +43,8 @@ public class ProtectionSettingsActivity extends BaseActivity {
     private TextView accKeepAliveFreqTip;
     private TextView accKeepAliveModeBtn;
     private TextView timeRollbackTip;
+    /** 全屏覆盖拦截力度按钮（标准 / 敏感），onResume 回本页时刷新 */
+    private TextView overlayModeBtn;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -80,6 +82,15 @@ public class ProtectionSettingsActivity extends BaseActivity {
 
         addSwitch(cardBase, getString(R.string.switch_block_overlay), "block_overlay", true);
         cardBase.addView(XtUi.tip(this, getString(R.string.tip_block_overlay)));
+
+        // 拦截力度：标准（连续命中才拦，抗误判）/ 敏感（出现即拦，每秒检查一次）
+        overlayModeBtn = XtUi.button(this, "", new View.OnClickListener() {
+            @Override public void onClick(View v) { showOverlayModeDialog(); }
+        });
+        refreshOverlayModeBtn();
+        LinearLayout.LayoutParams omLp = new LinearLayout.LayoutParams(-1, -2);
+        omLp.topMargin = XtUi.dp(this, 6);
+        cardBase.addView(overlayModeBtn, omLp);
 
         // 无障碍保活：auto 检测到掉线才拉活；force 每轮无条件写回
         addSwitch(cardBase, "无障碍保活", XTSafeCoreService.KEY_ACC_KEEP_ALIVE, false);
@@ -357,6 +368,7 @@ public class ProtectionSettingsActivity extends BaseActivity {
             accKeepAliveFreqTip.setText("保活检查频率：" + BlockUninstallManager.formatInterval(getAccKeepAliveTicks()));
         }
         refreshAccKeepAliveModeBtn();
+        refreshOverlayModeBtn();
         if (timeRollbackTip != null) {
             timeRollbackTip.setText(timeRollbackTipText(getTimeRollbackMinutes()));
         }
@@ -409,6 +421,52 @@ public class ProtectionSettingsActivity extends BaseActivity {
                     }
                 })
                 .setNegativeButton(R.string.cancel, null)
+                .create();
+        dlg.show();
+        XtDialog.tint(dlg);
+    }
+
+    // ==================== 全屏覆盖拦截力度 ====================
+
+    /** 当前拦截力度：standard 标准 / sensitive 敏感 */
+    private String overlayMode() {
+        try {
+            return prefs.getString(XTSafeMainService.KEY_OVERLAY_BLOCK_MODE,
+                    XTSafeMainService.OVERLAY_MODE_STANDARD);
+        } catch (Throwable t) {
+            return XTSafeMainService.OVERLAY_MODE_STANDARD;
+        }
+    }
+
+    private void refreshOverlayModeBtn() {
+        if (overlayModeBtn == null) return;
+        boolean sensitive = XTSafeMainService.OVERLAY_MODE_SENSITIVE.equals(overlayMode());
+        overlayModeBtn.setText(sensitive ? "拦截力度：敏感" : "拦截力度：标准");
+    }
+
+    /** 拦截力度单选弹窗 */
+    private void showOverlayModeDialog() {
+        final String[] items = {
+                "标准（连续命中才拦截，抗误判）",
+                "敏感（出现即拦截，每秒检查一次）"
+        };
+        final String[] values = {
+                XTSafeMainService.OVERLAY_MODE_STANDARD,
+                XTSafeMainService.OVERLAY_MODE_SENSITIVE
+        };
+        int checked = XTSafeMainService.OVERLAY_MODE_SENSITIVE.equals(overlayMode()) ? 1 : 0;
+        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
+                .setTitle("全屏覆盖拦截力度")
+                .setSingleChoiceItems(items, checked, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        prefs.edit().putString(XTSafeMainService.KEY_OVERLAY_BLOCK_MODE,
+                                values[which]).apply();
+                        refreshOverlayModeBtn();
+                        dialog.dismiss();
+                    }
+                })
+                .setNegativeButton("取消", null)
                 .create();
         dlg.show();
         XtDialog.tint(dlg);

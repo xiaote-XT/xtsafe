@@ -35,16 +35,81 @@ import java.util.regex.Pattern;
  */
 public final class OverlayApi {
 
-    /** 需要重点关注的窗口类型：系统悬浮 / 无障碍覆盖 / 应用悬浮 */
-    private static final int[] OVERLAY_TYPES = { 2002, 2003, 2006, 2010, 2032, 2038 };
+    /** 系统窗口类型区间 */
+    private static final int TYPE_SYS_MIN = 2000;
+    private static final int TYPE_SYS_MAX = 2999;
+    /*
+     * 安全类型名单与类型名/数值映射已统一到 OverlayDetector：
+     * 那边用反射自动建表，本类只调用，不再单独维护一份，避免口径分叉。
+     */
     /** 面积占比阈值 */
     private static final float AREA_RATIO = 0.90f;
 
     /** 窗口矩形：dumpsys 输出形如 mFrame=[l,t][r,b] */
     private static final Pattern P_FRAME =
             Pattern.compile("mFrame=\\[(-?\\d+),(-?\\d+)\\]\\[(-?\\d+),(-?\\d+)\\]");
-    /** 窗口类型 */
-    private static final Pattern P_TYPE = Pattern.compile("\\bty=(\\d+)\\b");
+    /**
+     * 窗口类型：新版 dumpsys 输出常量名（ty=APPLICATION_OVERLAY），
+     * 旧版输出数字（ty=2038），两种都要认。
+     */
+    private static final Pattern P_TYPE = Pattern.compile("\\bty=([A-Za-z0-9_]+)");
+    /** 兼容新版：Frames 行里的 frame=[l,t][r,b]（新版不再输出 mFrame=） */
+    private static final Pattern P_FRAME_LOOSE =
+            Pattern.compile("\\bframe=\\[(-?\\d+),(-?\\d+)\\]\\[(-?\\d+),(-?\\d+)\\]");
+
+    /**
+     * 窗口类型 token → 数值。
+     *
+     * 数字直接解析；常量名去 TYPE_ 前缀后查表；
+     * 认不出的系统窗口常量统一给 2500（仍在 2000-2999 区间内，
+     * 按候选覆盖处理），由安全名单、面积、可见性、第三方应用继续过滤。
+     */
+    public static int typeFromToken(String token) {
+        if (token == null || token.isEmpty()) return 0;
+        char c0 = token.charAt(0);
+        if (c0 >= '0' && c0 <= '9') {
+            try { return Integer.parseInt(token); } catch (Exception ignored) { return 0; }
+        }
+        // 统一委托 OverlayDetector：类型名/数值映射只维护一份
+        return xiaote.AnQuan.OverlayDetector.typeFromToken(token);
+    }
+
+    /** 旧映射实现已停用，仅作对照；新逻辑全部走 OverlayDetector 的反射表 */
+    private static int legacyTypeFromToken(String token) {
+        String t = token.toUpperCase(java.util.Locale.US);
+        if (t.startsWith("TYPE_")) t = t.substring(5);
+        if ("APPLICATION_OVERLAY".equals(t)) return 2038;
+        if ("SYSTEM_ALERT".equals(t)) return 2003;
+        if ("SYSTEM_OVERLAY".equals(t)) return 2006;
+        if ("SYSTEM_ERROR".equals(t)) return 2010;
+        if ("ACCESSIBILITY_OVERLAY".equals(t)) return 2032;
+        if ("PRIORITY_PHONE".equals(t)) return 2007;
+        if ("PHONE".equals(t)) return 2002;
+        if ("TOAST".equals(t)) return 2005;
+        if ("STATUS_BAR".equals(t)) return 2000;
+        if ("NAVIGATION_BAR".equals(t)) return 2019;
+        if ("NAVIGATION_BAR_PANEL".equals(t)) return 2024;
+        if ("INPUT_METHOD".equals(t)) return 2011;
+        if ("INPUT_METHOD_DIALOG".equals(t)) return 2012;
+        if ("WALLPAPER".equals(t)) return 2013;
+        if ("POINTER".equals(t)) return 2015;
+        if ("SEARCH_BAR".equals(t)) return 2001;
+        if ("VOLUME_OVERLAY".equals(t)) return 2020;
+        if ("BOOT_PROGRESS".equals(t)) return 2021;
+        if ("MAGNIFICATION_OVERLAY".equals(t)) return 2027;
+        /*
+         * 应用类窗口常量必须显式降为非系统值，否则 ty=BASE_APPLICATION
+         * 会落到 2500 默认值，被当成全屏覆盖候选，把前台应用自己判成
+         * 覆盖窗口。
+         */
+        if ("BASE_APPLICATION".equals(t)) return 1;
+        if ("APPLICATION".equals(t)) return 2;
+        if ("APPLICATION_STARTING".equals(t)) return 3;
+        if ("DRAWN_APPLICATION".equals(t)) return 4;
+        if (t.startsWith("APPLICATION_")) return 1000;
+        if ("SUB_PANEL".equals(t)) return 1000;
+        return 2500;
+    }
     /** 可见性：mViewVisibility=0x0 为可见，0x8 为 GONE */
     private static final Pattern P_VIEW_VISIBILITY =
             Pattern.compile("mViewVisibility=0x([0-9a-fA-F]+)");
@@ -162,9 +227,14 @@ public final class OverlayApi {
 
     // ==================== 判定辅助（调用方可直接复用） ====================
 
+    /**
+     * 是否属于需要关注的覆盖窗口类型。
+     *
+     * 改为「系统窗口区间内、且不在安全名单里」，与 OverlayDetector 口径一致，
+     * 避免固定白名单漏掉 ROM 自定义的 2xxx 覆盖类型。
+     */
     public static boolean isOverlayType(int type) {
-        for (int t : OVERLAY_TYPES) if (t == type) return true;
-        return false;
+        return xiaote.AnQuan.OverlayDetector.isOverlayType(type);
     }
 
     /**
@@ -227,10 +297,18 @@ public final class OverlayApi {
             if (mp.find()) { cur.pkg = mp.group(1); continue; }
             Matcher mt = P_TYPE.matcher(line);
             if (mt.find()) {
-                try { cur.type = Integer.parseInt(mt.group(1)); } catch (Exception ignored) {}
+                // 新版 dumpsys 输出常量名（ty=APPLICATION_OVERLAY），旧版输出数字
+                cur.type = typeFromToken(mt.group(1));
                 continue;
             }
+            /*
+             * 窗口矩形两种写法：
+             *   旧版 mFrame=[l,t][r,b] last=[l,t][r,b]；
+             *   新版只在 Frames: 行里给 frame=[l,t][r,b]。
+             * 只认前者会让所有窗口宽高为 0，面积判定直接失败。
+             */
             Matcher mf = P_FRAME.matcher(line);
+            if (!mf.find()) mf = P_FRAME_LOOSE.matcher(line);
             if (mf.find() && cur.right == 0 && cur.bottom == 0) {
                 try {
                     cur.left = Integer.parseInt(mf.group(1));

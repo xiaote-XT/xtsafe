@@ -12,6 +12,7 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.AsyncTask;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -113,6 +114,15 @@ public class SecurityScanActivity extends Activity {
         statusText = (TextView) findViewById(R.id.statusText);
         scanButton = (Button) findViewById(R.id.scanButton);
         selectApkButton = (Button) findViewById(R.id.selectApkButton);
+
+        // 状态文字与进度条走 xtui 取色，深浅主题自动跟随
+        statusText.setTextColor(XtUi.colorMuted(this));
+        try {
+            if (Build.VERSION.SDK_INT >= 21) {
+                progressBar.setIndeterminateTintList(
+                        android.content.res.ColorStateList.valueOf(XtUi.primary));
+            }
+        } catch (Throwable ignored) {}
 
         adapter = new AppAdapter(this, appList);
         appListView.setAdapter(adapter);
@@ -878,7 +888,7 @@ public class SecurityScanActivity extends Activity {
         textView.setSingleLine(false);
         int padding = (int) (getResources().getDisplayMetrics().density * 16);
         textView.setPadding(padding, padding, padding, padding);
-        textView.setTextColor(0xFF333333);
+        textView.setTextColor(XtUi.colorText(this));
         AlertDialog dlg = XtDialog.builder(this, title, null)
                 .setView(textView)
                 .setPositiveButton("复制", new DialogInterface.OnClickListener() {
@@ -1728,8 +1738,9 @@ public class SecurityScanActivity extends Activity {
             if (!app.scanResult.isEmpty()) {
                 text1.setTextColor(owner.riskColor(app.riskLevel));
             } else {
-                text1.setTextColor(0xFF333333);
+                text1.setTextColor(XtUi.colorText(owner));
             }
+            text2.setTextColor(XtUi.colorMuted(owner));
             return convertView;
         }
     }

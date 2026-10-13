@@ -60,6 +60,8 @@ public class AccessibilityManagerActivity extends BaseActivity {
     private Set<Integer> selected = new HashSet<Integer>();
     private TextView batchBtn;
     private TextView applyBtn;
+    /** 保护方案按钮（标准 / 强力） */
+    private TextView protectModeBtn;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -121,6 +123,18 @@ public class AccessibilityManagerActivity extends BaseActivity {
         applyBtn.setEnabled(false);
         applyBtn.setAlpha(0.4f);
         root.addView(topBar);
+
+        // 保护方案：标准（定期检查并恢复）/ 强力（每秒检查，被关闭立即恢复）
+        protectModeBtn = XtUi.button(this, "", new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { showProtectModeDialog(); }
+        });
+        LinearLayout.LayoutParams pmlp = new LinearLayout.LayoutParams(-1, -2);
+        pmlp.leftMargin = XtUi.dp(this, 12);
+        pmlp.rightMargin = XtUi.dp(this, 12);
+        pmlp.bottomMargin = XtUi.dp(this, 8);
+        root.addView(protectModeBtn, pmlp);
+        refreshProtectModeBtn();
 
         ListView listView = new ListView(this);
         listView.setBackgroundColor(XtUi.colorBg(this));
@@ -314,6 +328,60 @@ public class AccessibilityManagerActivity extends BaseActivity {
         adapter.notifyDataSetChanged();
         XtToast.show(this, getString(R.string.mode_set_done,
                 item.appName + " → " + modeText(mode)));
+    }
+
+    // ==================== 保护方案 ====================
+
+    /** 当前保护方案：standard 标准 / strong 强力 */
+    private String protectMode() {
+        try {
+            return prefs.getString(XTSafeMainService.KEY_ACC_PROTECT_MODE,
+                    XTSafeMainService.ACC_PROTECT_MODE_STANDARD);
+        } catch (Throwable t) {
+            return XTSafeMainService.ACC_PROTECT_MODE_STANDARD;
+        }
+    }
+
+    private void refreshProtectModeBtn() {
+        if (protectModeBtn == null) return;
+        boolean strong = XTSafeMainService.ACC_PROTECT_MODE_STRONG.equals(protectMode());
+        protectModeBtn.setText(strong
+                ? "保护方案：强力（每秒检查，被关闭立即恢复）"
+                : "保护方案：标准（定期检查并恢复）");
+    }
+
+    /** 保护方案单选弹窗 */
+    private void showProtectModeDialog() {
+        final String[] items = {
+                "标准（定期检查，被关闭后恢复）",
+                "强力（每秒检查一次，被关闭就恢复）"
+        };
+        final String[] values = {
+                XTSafeMainService.ACC_PROTECT_MODE_STANDARD,
+                XTSafeMainService.ACC_PROTECT_MODE_STRONG
+        };
+        int checked = XTSafeMainService.ACC_PROTECT_MODE_STRONG.equals(protectMode()) ? 1 : 0;
+        final android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
+                .setTitle("无障碍保护方案")
+                .setSingleChoiceItems(items, checked, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        prefs.edit().putString(XTSafeMainService.KEY_ACC_PROTECT_MODE,
+                                values[which]).apply();
+                        refreshProtectModeBtn();
+                        dialog.dismiss();
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .create();
+        dlg.show();
+        XtDialog.tint(dlg);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshProtectModeBtn();
     }
 
     class AccItem {

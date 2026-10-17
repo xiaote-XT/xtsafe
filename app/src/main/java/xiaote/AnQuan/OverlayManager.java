@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Set;
 
 import rikka.shizuku.Shizuku;
+import xiaote.xtui.XtDialog;
 import xiaote.xtui.XtUi;
 
 /**
@@ -207,6 +208,7 @@ public class OverlayManager {
                 wType, baseFlags, PixelFormat.TRANSLUCENT);
         loadParams.gravity = Gravity.CENTER;
 
+        // 加载态同样走 XTUI 取色：底色、进度色、提示文字色与列表页保持一致
         final LinearLayout loadingRoot = new LinearLayout(service);
         loadingRoot.setOrientation(LinearLayout.VERTICAL);
         loadingRoot.setGravity(Gravity.CENTER);
@@ -214,15 +216,17 @@ public class OverlayManager {
         ProgressBar progressBar = new ProgressBar(service);
         progressBar.setIndeterminate(true);
         if (Build.VERSION.SDK_INT >= 21) {
-            progressBar.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(colorHelper.getThemeColor()));
+            progressBar.setIndeterminateTintList(
+                    android.content.res.ColorStateList.valueOf(XtUi.primary));
         }
-        progressBar.setLayoutParams(new LinearLayout.LayoutParams(colorHelper.dpToPx(48), colorHelper.dpToPx(48)));
+        progressBar.setLayoutParams(new LinearLayout.LayoutParams(
+                XtUi.dp(service, 48), XtUi.dp(service, 48)));
         loadingRoot.addView(progressBar);
         TextView loadingText = new TextView(service);
         loadingText.setText(R.string.loading);
-        loadingText.setTextColor(colorHelper.getSecondaryTextColor());
+        loadingText.setTextColor(XtUi.colorMuted(service));
         loadingText.setTextSize(14);
-        loadingText.setPadding(0, 16, 0, 0);
+        loadingText.setPadding(0, XtUi.dp(service, 16), 0, 0);
         loadingRoot.addView(loadingText);
 
         try {
@@ -264,74 +268,44 @@ public class OverlayManager {
     }
 
     private LinearLayout buildListUI(final List<AppInfo> appList, final Set<String> accPkgs) {
-        LinearLayout root = new LinearLayout(service);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(XtUi.colorBg(service));
+        // XTUI 骨架：column 自带背景色与 16dp 内边距
+        LinearLayout root = XtUi.column(service);
 
-        int themeColor = colorHelper.getThemeColor();
-        int titleBarColor = (themeColor & 0x00FFFFFF) | (0xFF << 24);
-        if (!colorHelper.isDarkMode()) {
-            int r = Color.red(titleBarColor), g = Color.green(titleBarColor), b = Color.blue(titleBarColor);
-            double lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-            if (lum > 0.6) {
-                titleBarColor = Color.argb(255, Math.max(0, r - 60), Math.max(0, g - 60), Math.max(0, b - 60));
-            }
-        }
+        // ===== 标题 =====
+        TextView titleText = XtUi.title(service,
+                service.getString(R.string.app_name) + " - " + service.getString(R.string.uninstall_title));
+        titleText.setPadding(0, XtUi.dp(service, 8), 0, XtUi.dp(service, 10));
+        root.addView(titleText);
 
-        LinearLayout titleBar = new LinearLayout(service);
-        titleBar.setOrientation(LinearLayout.HORIZONTAL);
-        titleBar.setGravity(Gravity.CENTER_VERTICAL);
-        titleBar.setBackgroundColor(titleBarColor);
-        titleBar.setPadding(16, 14, 16, 14);
+        // ===== 顶部操作：紧急操作 / 隐藏 =====
+        LinearLayout topRow = new LinearLayout(service);
+        topRow.setOrientation(LinearLayout.HORIZONTAL);
 
-        TextView titleText = new TextView(service);
-        titleText.setText(service.getString(R.string.app_name) + " - " + service.getString(R.string.uninstall_title));
-        titleText.setTextColor(colorHelper.getContrastTextColor(titleBarColor));
-        titleText.setTextSize(17);
-        titleText.setTypeface(null, Typeface.BOLD);
-        titleText.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1));
-        titleBar.addView(titleText);
+        TextView emergencyBtn = XtUi.button(service, service.getString(R.string.emergency_ops),
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) { dismissEmergencyMenu(); showEmergencyMenu(); }
+                });
+        LinearLayout.LayoutParams emLp = new LinearLayout.LayoutParams(0, -2, 1f);
+        emLp.rightMargin = XtUi.dp(service, 6);
+        topRow.addView(emergencyBtn, emLp);
 
-        Button emergencyBtn = new Button(service);
-        emergencyBtn.setText(R.string.emergency_ops);
-        emergencyBtn.setTextSize(12);
-        emergencyBtn.setTextColor(colorHelper.getContrastTextColor(titleBarColor));
-        GradientDrawable emerBg = new GradientDrawable();
-        emerBg.setCornerRadius(colorHelper.dpToPx(16));
-        emerBg.setColor(Color.argb(80, 255, 80, 80));
-        emergencyBtn.setBackground(emerBg);
-        emergencyBtn.setPadding(12, 6, 12, 6);
-        emergencyBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) { dismissEmergencyMenu(); showEmergencyMenu(); }
-        });
-        titleBar.addView(emergencyBtn);
+        TextView closeBtn = XtUi.button(service, service.getString(R.string.hide),
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) { dismissList(); }
+                });
+        topRow.addView(closeBtn, new LinearLayout.LayoutParams(0, -2, 1f));
+        root.addView(topRow);
 
-        Button closeBtn = new Button(service);
-        closeBtn.setText(R.string.hide);
-        closeBtn.setTextSize(14);
-        closeBtn.setTextColor(colorHelper.getContrastTextColor(titleBarColor));
-        GradientDrawable hideBg = new GradientDrawable();
-        hideBg.setCornerRadius(colorHelper.dpToPx(16));
-        hideBg.setColor(Color.argb(60, 0, 0, 0));
-        closeBtn.setBackground(hideBg);
-        closeBtn.setPadding(16, 6, 16, 6);
-        closeBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) { dismissList(); }
-        });
-        titleBar.addView(closeBtn);
-        root.addView(titleBar);
-
-        EditText searchBox = new EditText(service);
+        // 搜索框：XtDialog.input 只负责外观（描边 + 圆角 + 卡色），宽度交给父容器
+        EditText searchBox = XtDialog.input(service);
         searchBox.setHint(R.string.search_hint);
-        searchBox.setHintTextColor(colorHelper.getHintTextColor());
-        searchBox.setTextColor(colorHelper.getTextColor());
         searchBox.setTextSize(14);
-        searchBox.setBackgroundColor(colorHelper.getSearchBgColor());
-        searchBox.setPadding(16, 10, 16, 10);
         searchBox.setSingleLine(true);
-        root.addView(searchBox);
+        LinearLayout.LayoutParams sbLp = new LinearLayout.LayoutParams(-1, -2);
+        sbLp.topMargin = XtUi.dp(service, 10);
+        root.addView(searchBox, sbLp);
 
         boolean shizukuReady = ShellExecutor.isShizukuReady();
         String uninstallMode;
@@ -343,17 +317,15 @@ public class OverlayManager {
             uninstallMode = service.getString(R.string.system_uninstall);
         }
         String statusText = String.format(service.getString(R.string.count_format), appList.size(), uninstallMode);
-        TextView hint = new TextView(service);
-        hint.setText(statusText);
-        hint.setTextColor(colorHelper.getSecondaryTextColor());
-        hint.setTextSize(11);
-        hint.setPadding(20, 8, 20, 8);
-        hint.setBackgroundColor(colorHelper.getHintBgColor());
+        TextView hint = XtUi.tip(service, statusText);
+        hint.setGravity(Gravity.CENTER);
+        hint.setPadding(0, XtUi.dp(service, 8), 0, XtUi.dp(service, 6));
         root.addView(hint);
 
         ListView listView = new ListView(service);
-        listView.setBackgroundColor(colorHelper.getHintBgColor());
-        listView.setDividerHeight(1);
+        listView.setBackgroundColor(XtUi.colorBg(service));
+        listView.setDivider(new android.graphics.drawable.ColorDrawable(XtUi.colorBorder(service)));
+        listView.setDividerHeight(Math.max(1, XtUi.dp(service, XtUi.borderDp)));
         listView.setChoiceMode(ListView.CHOICE_MODE_NONE);
 
         final Set<String> virusPkgs = VirusPackages.getVirusPackages(service);
@@ -363,35 +335,25 @@ public class OverlayManager {
 
         LinearLayout filterRow = new LinearLayout(service);
         filterRow.setOrientation(LinearLayout.HORIZONTAL);
-        filterRow.setGravity(Gravity.CENTER);
-        filterRow.setPadding(12, 8, 12, 8);
+        LinearLayout.LayoutParams frLp = new LinearLayout.LayoutParams(-1, -2);
+        frLp.topMargin = XtUi.dp(service, 10);
+        frLp.bottomMargin = XtUi.dp(service, 6);
 
-        Button btnAll = new Button(service);
-        btnAll.setText(R.string.filter_all);
-        btnAll.setTextSize(13);
-        btnAll.setAllCaps(false);
-        btnAll.setPadding(16, 6, 16, 6);
-        btnAll.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) { adapter.setShowManagedOnly(false); }
-        });
-        filterRow.addView(btnAll);
+        TextView btnAll = XtUi.button(service, service.getString(R.string.filter_all),
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) { adapter.setShowManagedOnly(false); }
+                });
+        LinearLayout.LayoutParams faLp = new LinearLayout.LayoutParams(0, -2, 1f);
+        faLp.rightMargin = XtUi.dp(service, 6);
+        filterRow.addView(btnAll, faLp);
 
-        TextView filterSpacer = new TextView(service);
-        filterSpacer.setWidth(colorHelper.dpToPx(12));
-        filterRow.addView(filterSpacer);
-
-        Button btnMgr = new Button(service);
-        btnMgr.setText(R.string.filter_managed);
-        btnMgr.setTextSize(13);
-        btnMgr.setAllCaps(false);
-        btnMgr.setPadding(16, 6, 16, 6);
-        btnMgr.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) { adapter.setShowManagedOnly(true); }
-        });
-        filterRow.addView(btnMgr);
-        root.addView(filterRow);
+        TextView btnMgr = XtUi.button(service, service.getString(R.string.filter_managed),
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) { adapter.setShowManagedOnly(true); }
+                });
+        filterRow.addView(btnMgr, new LinearLayout.LayoutParams(0, -2, 1f));
 
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
@@ -421,42 +383,35 @@ public class OverlayManager {
             @Override public void afterTextChanged(Editable s) {}
         });
 
-        root.addView(listView);
+        // 列表撑满剩余空间：column 是 LinearLayout，不给权重只会按内容高度收缩
+        root.addView(listView, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        // 筛选按钮放在列表下方，与原来的视觉顺序一致
+        root.addView(filterRow, frLp);
 
         LinearLayout bottomBar = new LinearLayout(service);
         bottomBar.setOrientation(LinearLayout.HORIZONTAL);
-        bottomBar.setGravity(Gravity.CENTER);
-        bottomBar.setBackgroundColor(colorHelper.getSurfaceColor());
-        bottomBar.setPadding(20, 12, 20, 12);
+        LinearLayout.LayoutParams bbLp = new LinearLayout.LayoutParams(-1, -2);
+        bbLp.topMargin = XtUi.dp(service, 10);
+        root.addView(bottomBar, bbLp);
 
-        Button refreshBtn = new Button(service);
-        refreshBtn.setText(R.string.refresh_list);
-        refreshBtn.setTextSize(14);
-        refreshBtn.setTextColor(Color.WHITE);
-        refreshBtn.setBackgroundColor((colorHelper.getThemeColor() & 0x00FFFFFF) | (0x99 << 24));
-        refreshBtn.setPadding(20, 8, 20, 8);
-        refreshBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) { showUninstallList(); }
-        });
-        bottomBar.addView(refreshBtn);
+        TextView refreshBtn = XtUi.primaryButton(service, service.getString(R.string.refresh_list),
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) { showUninstallList(); }
+                });
+        LinearLayout.LayoutParams rLp = new LinearLayout.LayoutParams(0, -2, 1f);
+        rLp.rightMargin = XtUi.dp(service, 6);
+        bottomBar.addView(refreshBtn, rLp);
 
-        TextView spacer = new TextView(service);
-        spacer.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1));
-        bottomBar.addView(spacer);
-
-        Button homeBtn = new Button(service);
-        homeBtn.setText(R.string.back_home);
-        homeBtn.setTextSize(14);
-        homeBtn.setTextColor(colorHelper.getTextColor());
-        homeBtn.setBackgroundColor(colorHelper.getTransparentBgColor());
-        homeBtn.setPadding(20, 8, 20, 8);
-        homeBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) { service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME); }
-        });
-        bottomBar.addView(homeBtn);
-        root.addView(bottomBar);
+        TextView homeBtn = XtUi.button(service, service.getString(R.string.back_home),
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME);
+                    }
+                });
+        bottomBar.addView(homeBtn, new LinearLayout.LayoutParams(0, -2, 1f));
 
         return root;
     }

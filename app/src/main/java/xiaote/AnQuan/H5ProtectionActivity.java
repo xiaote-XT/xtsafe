@@ -75,10 +75,31 @@ public class H5ProtectionActivity extends H5BaseActivity {
             return o.toString();
         }
 
+        /**
+         * 写布尔型偏好。
+         *
+         * 「防音量恶意修改」与「音量超阈值执行安全操作」是绑定关系，
+         * 在这里统一兜底：开后者自动带上前者，关前者连带关掉后者。
+         * 前端 onSwitch 也做了同样处理，两处都做是为了防止旧页面缓存漏刷。
+         * 发生联动时回推前端，保证开关显示与存储一致。
+         */
         @JavascriptInterface
         public void setBool(String key, boolean value) {
             if (key == null) return;
-            try { prefs().edit().putBoolean(key, value).apply(); } catch (Throwable ignored) {}
+            boolean linked = false;
+            try {
+                prefs().edit().putBoolean(key, value).apply();
+                if ("volume_threshold_action".equals(key) && value
+                        && !prefs().getBoolean("volume_protect", false)) {
+                    prefs().edit().putBoolean("volume_protect", true).apply();
+                    linked = true;
+                } else if ("volume_protect".equals(key) && !value
+                        && prefs().getBoolean("volume_threshold_action", false)) {
+                    prefs().edit().putBoolean("volume_threshold_action", false).apply();
+                    linked = true;
+                }
+            } catch (Throwable ignored) {}
+            if (linked) refreshFrontend();
         }
 
         @JavascriptInterface

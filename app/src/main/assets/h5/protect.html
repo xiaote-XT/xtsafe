@@ -32,12 +32,14 @@ var SCHEMA = [
       fmt: function (v) { return '保活检查频率：' + XTUI.fmtInterval(v); } }
   ] },
   { title: '音量防护', items: [
-    { type: 'switch', key: 'volume_protect', label: '防音量恶意修改' },
+    { type: 'switch', key: 'volume_protect', label: '防音量恶意修改',
+      tip: '音量超过阈值时压回 0。关闭会连带关闭「音量超阈值执行安全操作」。' },
     { type: 'slider', key: 'volume_threshold', min: 0, max: 100, step: 1,
       fmt: function (v) { return '音量阈值：' + v; } },
     { type: 'slider', key: 'volume_check_interval', min: 1, max: 600, step: 1,
       fmt: function (v) { return '检查频率：' + XTUI.fmtInterval(v); } },
-    { type: 'switch', key: 'volume_threshold_action', label: '音量超阈值执行安全操作' },
+    { type: 'switch', key: 'volume_threshold_action', label: '音量超阈值执行安全操作',
+      tip: '需先开启「防音量恶意修改」，开启本项会自动带上它。' },
     { type: 'switch', key: 'volume_key_action', label: '按十下音量-触发安全操作' },
     { type: 'switch', key: 'time_rollback_action', label: '时间被回拨时触发安全操作',
       tip: '系统时间被往前调（回拨）超过下面阈值时，执行「选择操作」里勾选的安全操作；只往回退触发，正常走时不触发。' },
@@ -96,6 +98,9 @@ function onSwitch(key, val) {
   } else {
     XT.setBool(key, val);
     STATE[key] = val;
+    /* 绑定关系：开「音量超阈值执行安全操作」自动带上防篡改，反之连带关闭 */
+    if (key === 'volume_threshold_action' && val) STATE.volume_protect = true;
+    if (key === 'volume_protect' && !val) STATE.volume_threshold_action = false;
   }
 }
 

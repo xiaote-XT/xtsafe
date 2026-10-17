@@ -260,8 +260,9 @@ public class OverlayDetector {
 
     private final Context context;
     private final PackageManager pm;
-    private final int screenW;
-    private final int screenH;
+    /** 屏幕实际像素尺寸。横竖屏切换后会变，不能只在构造时读一次 */
+    private volatile int screenW;
+    private volatile int screenH;
 
     /** 连续命中计数：包名 -> 次数 */
     private final Map<String, Integer> hitCounter = new HashMap<String, Integer>();
@@ -269,6 +270,18 @@ public class OverlayDetector {
     public OverlayDetector(Context context) {
         this.context = context;
         this.pm = context.getPackageManager();
+        refreshScreenSize();
+    }
+
+    /**
+     * 重新读取屏幕实际尺寸。
+     *
+     * 只在构造时读一次并存成常量不行：服务启动时若设备是竖屏，
+     * 之后旋转到横屏，窗口 mFrame 变成横屏尺寸，而缓存的宽高仍是竖屏值，
+     * 面积判定会出现「一边达标、另一边不达标」，整屏覆盖窗被直接滤掉。
+     * 横屏下最容易复现「明明盖满屏幕却抓不到」。
+     */
+    private void refreshScreenSize() {
         int w = 0, h = 0;
         try {
             DisplayMetrics dm = new DisplayMetrics();
@@ -284,12 +297,31 @@ public class OverlayDetector {
             w = dm.widthPixels;
             h = dm.heightPixels;
         }
-        this.screenW = w;
-        this.screenH = h;
+        if (w > 0 && h > 0) {
+            screenW = w;
+            screenH = h;
+        }
     }
 
     public int getScreenWidth() { return screenW; }
     public int getScreenHeight() { return screenH; }
+
+    /**
+     * 窗口是否达到「全屏覆盖」标准。
+     *
+     * 方向无关：短边比短边、长边比长边。之前直接用 screenW/screenH 比较，
+     * 一旦窗口方向与缓存的屏幕方向不一致（典型就是横竖屏切换），
+     * 就会出现宽度达标、高度不达标，整屏窗口被漏掉。
+     */
+    private boolean isFullCoverage(int w, int h) {
+        if (w <= 0 || h <= 0) return false;
+        int sw = Math.min(screenW, screenH);
+        int sh = Math.max(screenW, screenH);
+        if (sw <= 0 || sh <= 0) return false;
+        int ww = Math.min(w, h);
+        int wh = Math.max(w, h);
+        return ww >= sw * AREA_RATIO && wh >= sh * AREA_RATIO;
+    }
 
     /** Shizuku 是否可用（唯一前提，普通 shell 拿不到 dumpsys window） */
     public boolean isAvailable() {
@@ -308,6 +340,7 @@ public class OverlayDetector {
      */
     public List<String> scanConfirmed() {
         List<String> confirmed = new ArrayList<String>();
+        refreshScreenSize();
         String out = dumpWindows();
         if (out == null || out.isEmpty()) {
             // 取不到数据时不清零，避免抖动导致永远无法累计
@@ -319,9 +352,8 @@ public class OverlayDetector {
             if (!w.visible) continue;
             if (!isOverlayType(w.type)) continue;
             if (w.width() <= 0 || w.height() <= 0) continue;
-            // 面积占比 ≥ 90%%（宽高都需达标）
-            if (w.width() < screenW * AREA_RATIO) continue;
-            if (w.height() < screenH * AREA_RATIO) continue;
+            // 面积占比 ≥ 90%%（方向无关：短边比短边、长边比长边）
+            if (!isFullCoverage(w.width(), w.height())) continue;
             if (isExcluded(w.packageName)) continue;
             currentHit.add(w.packageName);
         }
@@ -348,6 +380,7 @@ public class OverlayDetector {
 
     /** 命中后复检：该包名的全屏覆盖窗口是否仍然存在 */
     public boolean stillCovering(String pkg) {
+        refreshScreenSize();
         String out = dumpWindows();
         if (out == null) return true; // 取不到数据时按仍存在处理，避免漏拦截
         List<OverlayWindow> all = parse(out);
@@ -355,7 +388,7 @@ public class OverlayDetector {
             if (!pkg.equals(w.packageName)) continue;
             if (!w.visible) continue;
             if (!isOverlayType(w.type)) continue;
-            if (w.width() >= screenW * AREA_RATIO && w.height() >= screenH * AREA_RATIO) return true;
+            if (isFullCoverage(w.width(), w.height())) return true;
         }
         return false;
     }
@@ -398,23 +431,38 @@ public class OverlayDetector {
                 continue;
             }
             if (cur == null) continue;
+            /*
+             * 同一行可能同时带 package= 与 ty=（部分 ROM 的 mAttrs 行就是这样），
+             * 旧实现遇到 package= 就 continue，后面的 ty= 永远解析不到，
+             * 窗口类型恒为 0，isOverlayType 全部判否，整屏覆盖窗口被静默漏掉。
+             * 这里改为每个字段独立判断，互不抢占。
+             */
             Matcher mp = P_PACKAGE.matcher(line);
-            if (mp.find()) { cur.packageName = mp.group(1); continue; }
+            if (mp.find()) cur.packageName = mp.group(1);
             Matcher mt = P_TYPE.matcher(line);
-            if (mt.find()) {
+            if (mt.find() && cur.type == 0) {
                 // 新版 dumpsys 输出常量名（ty=APPLICATION_OVERLAY），旧版输出数字
                 cur.type = typeFromToken(mt.group(1));
-                continue;
             }
             /*
              * 窗口矩形两种写法：
              *   旧版 mFrame=[l,t][r,b] last=[l,t][r,b]；
              *   新版只在 Frames: 行里给 frame=[l,t][r,b]。
-             * 只认前者会让所有窗口宽高为 0，面积判定直接失败。
+             *
+             * 注意 Matcher.find() 有状态：同一个 matcher 连续调两次 find()，
+             * 第二次是从第一次匹配末尾继续搜，通常立刻返回 false。
+             * 旧写法 if(!mf.find()) ...; if(mf.find() ...) 会把已经匹配成功的
+             * mFrame 行白白丢掉，宽高恒为 0，面积判定全失败 —— 这正是
+             * 「窗口明明全屏覆盖、isOnScreen=true，却抓不到」的直接原因。
+             * 这里只 find() 一次并保存结果。
              */
             Matcher mf = P_FRAME.matcher(line);
-            if (!mf.find()) mf = P_FRAME_LOOSE.matcher(line);
-            if (mf.find() && cur.right == 0 && cur.bottom == 0) {
+            boolean frameFound = mf.find();
+            if (!frameFound) {
+                mf = P_FRAME_LOOSE.matcher(line);
+                frameFound = mf.find();
+            }
+            if (frameFound && cur.right == 0 && cur.bottom == 0) {
                 try {
                     cur.left = Integer.parseInt(mf.group(1));
                     cur.top = Integer.parseInt(mf.group(2));

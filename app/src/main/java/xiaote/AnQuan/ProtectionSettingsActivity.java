@@ -45,6 +45,8 @@ public class ProtectionSettingsActivity extends BaseActivity {
     private TextView timeRollbackTip;
     /** 全屏覆盖拦截力度按钮（标准 / 敏感），onResume 回本页时刷新 */
     private TextView overlayModeBtn;
+    /** 「音量超阈值执行安全操作」开关：与「防音量恶意修改」绑定，需联动回写 */
+    private XtUi.XtSwitch volumeThresholdActionSwitch;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -138,7 +140,28 @@ public class ProtectionSettingsActivity extends BaseActivity {
         // ==================== 音量防护 ====================
         LinearLayout cardVolume = XtUi.card(this);
 
-        addSwitch(cardVolume, getString(R.string.volume_protect), "volume_protect", false);
+        /*
+         * 防音量恶意修改：与「音量超阈值执行安全操作」绑定。
+         * 关掉它时连带关掉后者 —— 后者依赖前者把音量压回 0 才有意义，
+         * 只剩触发而不压音量，等于把「音量被拉满」当成安全事件反复触发。
+         */
+        final XtUi.XtSwitch volumeProtectSwitch =
+                XtUi.switchView(this, prefs.getBoolean("volume_protect", false));
+        volumeProtectSwitch.setOnCheckedChangeListener(new XtUi.XtSwitch.OnCheckedChangeListener() {
+            @Override public void onCheckedChanged(XtUi.XtSwitch v, boolean isChecked) {
+                prefs.edit().putBoolean("volume_protect", isChecked).apply();
+                if (!isChecked && prefs.getBoolean("volume_threshold_action", false)) {
+                    prefs.edit().putBoolean("volume_threshold_action", false).apply();
+                    if (volumeThresholdActionSwitch != null) {
+                        volumeThresholdActionSwitch.setChecked(false);
+                    }
+                    XtToast.show(ProtectionSettingsActivity.this,
+                            "已同时关闭「音量超阈值执行安全操作」");
+                }
+            }
+        });
+        cardVolume.addView(XtUi.row(this, getString(R.string.volume_protect), volumeProtectSwitch));
+
         final TextView volumeTip = XtUi.tip(this,
                 getString(R.string.volume_protect_tip, prefs.getInt("volume_threshold", 80)));
         cardVolume.addView(volumeTip);
@@ -184,7 +207,28 @@ public class ProtectionSettingsActivity extends BaseActivity {
         });
         cardVolume.addView(volumeFreqSeek);
 
-        addSwitch(cardVolume, "音量超阈值执行安全操作", "volume_threshold_action", false);
+        /*
+         * 音量超阈值执行安全操作：开启前必须已有「防音量恶意修改」。
+         * 未开启时自动把前者一并打开，而不是拒绝用户操作 ——
+         * 两个开关本就是一套机制，拆开只会在用户不知情时失效。
+         */
+        volumeThresholdActionSwitch = XtUi.switchView(this,
+                prefs.getBoolean("volume_threshold_action", false));
+        volumeThresholdActionSwitch.setOnCheckedChangeListener(
+                new XtUi.XtSwitch.OnCheckedChangeListener() {
+            @Override public void onCheckedChanged(XtUi.XtSwitch v, boolean isChecked) {
+                if (isChecked && !prefs.getBoolean("volume_protect", false)) {
+                    prefs.edit().putBoolean("volume_protect", true).apply();
+                    if (volumeProtectSwitch != null) volumeProtectSwitch.setChecked(true);
+                    XtToast.show(ProtectionSettingsActivity.this,
+                            "已同时开启「防音量恶意修改」");
+                }
+                prefs.edit().putBoolean("volume_threshold_action", isChecked).apply();
+            }
+        });
+        cardVolume.addView(XtUi.row(this, "音量超阈值执行安全操作", volumeThresholdActionSwitch));
+        cardVolume.addView(XtUi.tip(this,
+                "需先开启「防音量恶意修改」；开启本项会自动带上它，关闭它会连带关闭本项。"));
         addSwitch(cardVolume, "按十下音量-触发安全操作", "volume_key_action", true);
         cardVolume.addView(XtUi.tip(this,
                 "1 秒内连按十下音量减键即可触发；与音量超阈值、时间被回拨共用同一套「选择操作」。"));

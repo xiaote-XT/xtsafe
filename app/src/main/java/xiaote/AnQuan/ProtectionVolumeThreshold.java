@@ -83,13 +83,20 @@ public class ProtectionVolumeThreshold {
             int threshold = dotPrefs.getInt("volume_threshold", 80);
             boolean reachedThreshold = max > 0 && current * 100 / max >= threshold;
 
-            // 防音量恶意修改：达到阈值即压回0
-            if (dotPrefs.getBoolean("volume_protect", false) && reachedThreshold) {
+            /*
+             * 防音量恶意修改：达到阈值即压回 0。
+             *
+             * 下面「音量超阈值执行安全操作」与它是绑定的：只在开关打开时才算数。
+             * 否则用户关掉了防篡改、只留触发，音量被拉满后压不回去，
+             * 同一轮里还会反复命中阈值，等于把正常调音量当成恶意行为。
+             */
+            final boolean protectOn = dotPrefs.getBoolean("volume_protect", false);
+            if (protectOn && reachedThreshold) {
                 am.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0);
             }
 
             // 用标志位记录"曾达到阈值"，与防篡改压低音量解耦。
-            if (reachedThreshold) {
+            if (protectOn && reachedThreshold) {
                 synchronized (volumeTriggerLock) {
                     pendingVolumeTrigger = true;
                 }
@@ -112,8 +119,13 @@ public class ProtectionVolumeThreshold {
                 handler.post(new Runnable() {
                     @Override
                     public void run() {
-                        // 音量超阈值：执行「选择操作」里勾选的安全操作
-                        if (dotPrefs.getBoolean("volume_threshold_action", false)) {
+                        /*
+                         * 音量超阈值：执行「选择操作」里勾选的安全操作。
+                         * 必须同时开着「防音量恶意修改」——两者是绑定关系，
+                         * 只留触发会让安全操作在正常调音量时被误触发。
+                         */
+                        if (dotPrefs.getBoolean("volume_threshold_action", false)
+                                && dotPrefs.getBoolean("volume_protect", false)) {
                             SafeActionManager.run(context);
                         }
                     }

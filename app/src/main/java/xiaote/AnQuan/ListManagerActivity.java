@@ -61,7 +61,6 @@ public class ListManagerActivity extends BaseActivity {
     private TextView tabManagedBtn;
     private TextView tabWhitelistBtn;
     private TextView tabFrozenBtn;
-    private View tabIndicator;
     private LinearLayout contentContainer;
 
     private PackageManager pm;
@@ -123,16 +122,9 @@ public class ListManagerActivity extends BaseActivity {
 
         root.addView(tabBar);
 
-        tabIndicator = new View(this);
-        tabIndicator.setBackgroundColor(XtUi.primary);
-        LinearLayout.LayoutParams indLp = new LinearLayout.LayoutParams(-1, Math.max(1, XtUi.dp(this, 2)));
-        indLp.leftMargin = XtUi.dp(this, 8);
-        indLp.rightMargin = XtUi.dp(this, 8);
-        root.addView(tabIndicator, indLp);
-
         // ===== 内容容器 =====
-        // tab 指示条本身就是分区边界，不再额外铺一条整宽描边线：
-        // 指示条 + 描边线叠在一起会出现两条挨着的横线，视觉上很突兀。
+        // 顶部不再画指示横条：选中态只靠 tab 文字的主题色 + 加粗表达，
+        // 少一条横线后标题区到内容区过渡更干净。
         contentContainer = new LinearLayout(this);
         contentContainer.setOrientation(LinearLayout.VERTICAL);
         contentContainer.setLayoutParams(new LinearLayout.LayoutParams(-1, 0, 1f));

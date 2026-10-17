@@ -1,25 +1,40 @@
 package xiaote.AnQuan;
 
 import android.content.Context;
-import android.graphics.Color;
-import android.graphics.Typeface;
+import android.content.pm.PackageManager;
+import android.graphics.drawable.Drawable;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.Filter;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import xiaote.xtui.XtUi;
 
 /**
- * 应用列表适配器
- * 提取自 XTSafeMainService.AppListAdapter
+ * 应用列表适配器（XTUI 版）。
+ *
+ * 每一行统一走 XtUi.itemRow：44dp 圆角图标 + 应用名 + 包名与状态标记，
+ * 不再用单个 TextView 拼字符串 —— 那样行高参差、无图标、配色也不跟主题。
+ *
+ * 状态标记放在副标题里，用文字表达（病毒包名 / 管控 / 无障碍 / 风险应用），
+ * 颜色只用在标题上（风险、病毒标红），其余保持正常文字色，避免整行花掉。
+ *
+ * 图标从 PackageManager 读取并按包名缓存：ListView 滚动时反复取图标开销不小，
+ * 缓存后同一包名只取一次。targetSdk 26 不受包可见性限制，能取全。
  */
 public class AppListAdapter extends ArrayAdapter<AppInfo> {
+
+    /** 图标缓存：包名 → 图标，跨实例复用，卸载列表反复打开时不必重取 */
+    private static final Map<String, Drawable> sIconCache = new HashMap<String, Drawable>();
+
     private final Context context;
     private final ColorHelper colorHelper;
     private final Set<String> virusPackages;
@@ -52,40 +67,43 @@ public class AppListAdapter extends ArrayAdapter<AppInfo> {
 
     @Override
     public View getView(int position, View convertView, ViewGroup parent) {
-        TextView tv;
-        if (convertView instanceof TextView) tv = (TextView) convertView;
-        else tv = new TextView(context);
-
         AppInfo ai = filteredData.get(position);
         boolean isVirus = virusPackages != null && virusPackages.contains(ai.packageName);
         boolean isHighlight = highlightPkg != null && highlightPkg.equals(ai.packageName);
-        String prefix = isVirus ? "\u26A0 " : "";
-        String mgrMark = ai.isManaged ? " [\u7BA1\u63A7]" : "";
-        String accMark = ai.hasAccessibility ? " [\u65E0\u969C\u788D]" : "";
-        String riskMark = isHighlight ? context.getString(R.string.risk_mark) : ""; // "[风险应用]"
-        tv.setText(prefix + ai.name + accMark + mgrMark + riskMark + "\n" + ai.packageName);
 
-        if (isHighlight) {
-            tv.setTextColor(Color.argb(255, 255, 60, 60));
-            tv.setBackgroundColor(Color.argb(120, 255, 0, 0));
-        } else if (isVirus) {
-            tv.setTextColor(Color.argb(255, 255, 200, 100));
-            tv.setBackgroundColor(Color.argb(80, 255, 0, 0));
-        } else if (ai.isManaged) {
-            tv.setTextColor(Color.argb(255, 150, 200, 255));
-            tv.setBackgroundColor(Color.argb(40, 50, 130, 255));
-        } else if (ai.hasAccessibility) {
-            tv.setTextColor(Color.argb(255, 150, 255, 150));
-            tv.setBackgroundColor(Color.argb(40, 0, 180, 0));
-        } else {
-            tv.setTextColor(XtUi.colorText(context));
-            tv.setBackgroundColor(Color.TRANSPARENT);
+        // 副标题：包名 + 状态标记，一行一条，用 · 分隔
+        StringBuilder sub = new StringBuilder(ai.packageName);
+        if (isHighlight) sub.append("\n风险应用");
+        else if (isVirus) sub.append("\n病毒包名");
+        if (ai.hasAccessibility) sub.append(" · 无障碍");
+        if (ai.isManaged) sub.append(" · 管控");
+
+        LinearLayout row = XtUi.itemRow(context, iconOf(ai.packageName), ai.name, sub.toString(), null);
+
+        // 标题着色：风险 / 病毒标红，其余保持默认文字色
+        if (isHighlight || isVirus) {
+            try {
+                LinearLayout col = (LinearLayout) row.getChildAt(1);
+                TextView title = (TextView) col.getChildAt(0);
+                title.setTextColor(0xFFFF3C3C);
+            } catch (Throwable ignored) {}
         }
-        tv.setTextSize(15);
-        tv.setPadding(24, 16, 24, 16);
-        tv.setLines(2);
-        tv.setTypeface(null, isVirus || isHighlight || ai.hasAccessibility || ai.isManaged ? Typeface.BOLD : Typeface.NORMAL);
-        return tv;
+        return row;
+    }
+
+    /** 取应用图标，带包名缓存；取不到返回 null（itemRow 会用卡色底板兜住） */
+    private Drawable iconOf(String pkg) {
+        if (pkg == null) return null;
+        Drawable cached = sIconCache.get(pkg);
+        if (cached != null) return cached;
+        try {
+            PackageManager pm = context.getPackageManager();
+            Drawable d = pm.getApplicationIcon(pkg);
+            if (d != null) sIconCache.put(pkg, d);
+            return d;
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     @Override

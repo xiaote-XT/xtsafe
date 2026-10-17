@@ -64,6 +64,9 @@ public final class XtUi {
     public static float pressScale = 0.97f;
     public static float switchWidthDp = 50f;
     public static float switchHeightDp = 24f;
+    /** 列表图标尺寸与圆角（应用列表统一用） */
+    public static float iconSizeDp = 44f;
+    public static float iconRadiusDp = 12f;
 
     /** 强制深浅模式；null 表示跟随系统 */
     public static Boolean forceDark = null;
@@ -255,6 +258,80 @@ public final class XtUi {
         r.addView(tv);
         if (right != null) r.addView(right);
         return r;
+    }
+
+    /**
+     * 统一尺寸、统一圆角的应用图标控件。
+     *
+     * 尺寸固定 iconSizeDp × iconSizeDp —— 各应用自带图标大小不一，
+     * 不写死会让列表行高参差不齐。
+     *
+     * 图标铺满整个方形区域（CENTER_CROP，不留白），再由 clipToOutline
+     * 把图标本身连同底板一起裁成圆角，这样看到的是圆角图标，而不是
+     * 「里面一个小图标 + 外面一个圆角框」。透明边缘处露出的是卡色底板，
+     * 圆角轮廓依然成立。
+     */
+    public static ImageView iconView(Context c, android.graphics.drawable.Drawable icon) {
+        ImageView iv = new ImageView(c);
+        iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        iv.setBackground(round(c, colorCard(c), iconRadiusDp));
+        if (icon != null) iv.setImageDrawable(icon);
+        final float r = dp(c, iconRadiusDp);
+        try {
+            iv.setOutlineProvider(new android.view.ViewOutlineProvider() {
+                @Override
+                public void getOutline(View v, android.graphics.Outline o) {
+                    o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r);
+                }
+            });
+            iv.setClipToOutline(true);
+        } catch (Throwable ignored) {}
+        return iv;
+    }
+
+    /**
+     * 一行：左图标 + 中间标题/副标题 + 右侧控件。
+     *
+     * 用于应用列表（统一 44dp 圆角图标 + 应用名 + 包名）。subtitle / right 可为 null。
+     * 不主动给卡片底色，由调用方决定放在卡片里还是裸放。
+     */
+    public static LinearLayout itemRow(Context c, android.graphics.drawable.Drawable icon,
+            CharSequence title, CharSequence subtitle, View right) {
+        LinearLayout row = new LinearLayout(c);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        int py = dp(c, 8);
+        row.setPadding(0, py, 0, py);
+
+        ImageView iv = iconView(c, icon);
+        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(
+                dp(c, iconSizeDp), dp(c, iconSizeDp));
+        ilp.rightMargin = dp(c, 12);
+        iv.setLayoutParams(ilp);
+        row.addView(iv);
+
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setLayoutParams(new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView tvTitle = new TextView(c);
+        tvTitle.setText(title == null ? "" : title);
+        tvTitle.setTextSize(15f);
+        tvTitle.setTextColor(colorText(c));
+        col.addView(tvTitle);
+
+        if (subtitle != null && subtitle.length() > 0) {
+            TextView tvSub = new TextView(c);
+            tvSub.setText(subtitle);
+            tvSub.setTextSize(12f);
+            tvSub.setTextColor(colorMuted(c));
+            tvSub.setPadding(0, dp(c, 2), 0, 0);
+            col.addView(tvSub);
+        }
+        row.addView(col);
+        if (right != null) row.addView(right);
+        return row;
     }
 
     /* ==================== 自绘胶囊开关 ==================== */

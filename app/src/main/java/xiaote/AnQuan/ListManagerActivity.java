@@ -130,11 +130,9 @@ public class ListManagerActivity extends BaseActivity {
         indLp.rightMargin = XtUi.dp(this, 8);
         root.addView(tabIndicator, indLp);
 
-        View divider = new View(this);
-        divider.setBackgroundColor(XtUi.colorBorder(this));
-        root.addView(divider, new LinearLayout.LayoutParams(-1, Math.max(1, XtUi.dp(this, XtUi.borderDp))));
-
         // ===== 内容容器 =====
+        // tab 指示条本身就是分区边界，不再额外铺一条整宽描边线：
+        // 指示条 + 描边线叠在一起会出现两条挨着的横线，视觉上很突兀。
         contentContainer = new LinearLayout(this);
         contentContainer.setOrientation(LinearLayout.VERTICAL);
         contentContainer.setLayoutParams(new LinearLayout.LayoutParams(-1, 0, 1f));
@@ -581,15 +579,27 @@ public class ListManagerActivity extends BaseActivity {
         contentContainer.addView(btn, lp);
     }
 
-    /** 新建一个带 xtui 分隔线的 ListView，撑满剩余空间 */
+    /**
+     * 新建一个带 xtui 分隔线的 ListView，撑满剩余空间。
+     *
+     * 分隔线左右各留 20dp，与行内文字起点对齐，不再整行从屏幕边缘拉到边缘 ——
+     * 贴边的长横线在纯色底上会显得很硬，缩进后视觉上退到内容之下。
+     */
     private ListView newListView() {
         ListView listView = new ListView(this);
         listView.setBackgroundColor(XtUi.colorBg(this));
-        listView.setDivider(new ColorDrawable(XtUi.colorBorder(this)));
+        listView.setDivider(insetDivider());
         listView.setDividerHeight(Math.max(1, XtUi.dp(this, XtUi.borderDp)));
         listView.setCacheColorHint(0x00000000);
         listView.setLayoutParams(new LinearLayout.LayoutParams(-1, 0, 1f));
         return listView;
+    }
+
+    /** 左右缩进的分隔线：细描边色，两侧各留 20dp，与行内文本左对齐 */
+    private android.graphics.drawable.Drawable insetDivider() {
+        ColorDrawable line = new ColorDrawable(XtUi.colorBorder(this));
+        int inset = XtUi.dp(this, 20);
+        return new android.graphics.drawable.InsetDrawable(line, inset, 0, inset, 0);
     }
 
     private void addTip(String text) {

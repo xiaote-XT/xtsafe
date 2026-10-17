@@ -46,6 +46,8 @@ import xiaote.xtui.XtUi;
 public class KillAdActivity extends android.app.Activity {
 
     private static final int REQUEST_VPN = 2001;
+    /** 选择本地规则文件导入 */
+    private static final int REQUEST_IMPORT = 2002;
 
     private SharedPreferences prefs;
     private XtUi.XtSwitch mainSwitch;
@@ -53,6 +55,7 @@ public class KillAdActivity extends android.app.Activity {
     private TextView statsView;
     private TextView rulesView;
     private TextView ruleInfoView;
+    private TextView importInfoView;
     private TextView logInfoView;
     private TextView pauseBtn;
 
@@ -139,11 +142,18 @@ public class KillAdActivity extends android.app.Activity {
         // ============ 在线规则源 ============
         root.addView(sectionLabel(getString(R.string.killad_rule_source_label)));
 
+        // 规则源支持一行一个 URL：多行输入，保存后逐个下载合并生效
         final EditText ruleUrlInput = XtDialog.input(this);
-        ruleUrlInput.setSingleLine(true);
+        ruleUrlInput.setSingleLine(false);
+        ruleUrlInput.setMinLines(2);
+        ruleUrlInput.setMaxLines(8);
         ruleUrlInput.setTextSize(13);
-        ruleUrlInput.setText(KillAdRuleUpdater.getRuleUrl(this));
+        ruleUrlInput.setText(KillAdRuleUpdater.getRuleUrlRaw(this));
         root.addView(ruleUrlInput);
+
+        TextView sourceInputTip = XtUi.tip(this, getString(R.string.killad_rule_source_tip));
+        sourceInputTip.setPadding(0, XtUi.dp(this, 6), 0, 0);
+        root.addView(sourceInputTip);
 
         LinearLayout ruleBtnRow = new LinearLayout(this);
         ruleBtnRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -154,7 +164,7 @@ public class KillAdActivity extends android.app.Activity {
                     @Override
                     public void onClick(View v) {
                         KillAdRuleUpdater.setRuleUrl(KillAdActivity.this, ruleUrlInput.getText().toString());
-                        ruleUrlInput.setText(KillAdRuleUpdater.getRuleUrl(KillAdActivity.this));
+                        ruleUrlInput.setText(KillAdRuleUpdater.getRuleUrlRaw(KillAdActivity.this));
                         XtToast.show(KillAdActivity.this, R.string.killad_rule_source_saved);
                     }
                 });
@@ -196,6 +206,11 @@ public class KillAdActivity extends android.app.Activity {
         ruleInfoView.setPadding(0, XtUi.dp(this, 6), 0, 0);
         root.addView(ruleInfoView);
 
+        // 规则源文件格式说明：在线源与自定义、导入共用同一套一行一条解析
+        TextView sourceTip = XtUi.tip(this, getString(R.string.killad_source_tip));
+        sourceTip.setPadding(0, XtUi.dp(this, 6), 0, 0);
+        root.addView(sourceTip);
+
         // ============ 上游 DNS ============
         root.addView(sectionLabel(getString(R.string.killad_upstream_label)));
 
@@ -226,11 +241,45 @@ public class KillAdActivity extends android.app.Activity {
         customInput.setText(KillAdRules.getCustomDomains(this));
         root.addView(customInput);
 
+        // 支持格式说明：一行一条，旧的逗号 / 空格分隔写法仍兼容
+        TextView customTip = XtUi.tip(this,
+                "一行一条：example.com、*.example.com、ad-*.com、||example.com^、0.0.0.0 example.com；\n"
+                        + "含路径或完整 URL 的规则 DNS 层无法匹配，会被忽略。");
+        customTip.setPadding(0, XtUi.dp(this, 6), 0, 0);
+        root.addView(customTip);
+
         XtUi.addButton(root, this, getString(R.string.killad_custom_save), new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 KillAdRules.setCustomDomains(KillAdActivity.this, customInput.getText().toString());
                 XtToast.show(KillAdActivity.this, R.string.killad_custom_saved);
+                refresh();
+            }
+        });
+
+        // ============ 导入规则 ============
+        // 本地 .txt 一行一条，语法与自定义规则一致；
+        // 文件内容原样存入 filesDir/killad_imported.txt，与在线规则、自定义规则并行生效。
+        root.addView(sectionLabel(getString(R.string.killad_import_label)));
+
+        importInfoView = new TextView(this);
+        importInfoView.setTextSize(11);
+        importInfoView.setTextColor(XtUi.colorMuted(this));
+        importInfoView.setPadding(0, 0, 0, XtUi.dp(this, 6));
+        root.addView(importInfoView);
+
+        XtUi.addButton(root, this, getString(R.string.killad_import_btn), new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                pickImportFile();
+            }
+        });
+
+        XtUi.addButton(root, this, getString(R.string.killad_import_clear), new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                KillAdRules.clearImportedRules(KillAdActivity.this);
+                XtToast.show(KillAdActivity.this, R.string.killad_import_cleared);
                 refresh();
             }
         });
@@ -392,6 +441,18 @@ public class KillAdActivity extends android.app.Activity {
             }
         }
 
+        if (importInfoView != null) {
+            if (!KillAdRules.hasImportedRules(this)) {
+                importInfoView.setText(R.string.killad_import_none);
+            } else {
+                int n = 0;
+                try {
+                    n = KillAdRules.countRules(KillAdRules.getImportedRaw(this));
+                } catch (Throwable ignored) {}
+                importInfoView.setText(getString(R.string.killad_import_info, n));
+            }
+        }
+
         if (logInfoView != null) {
             String path = KillAdLogger.logPath(this);
             long size = KillAdLogger.size(this);
@@ -418,6 +479,12 @@ public class KillAdActivity extends android.app.Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_IMPORT) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                importFromUri(data.getData());
+            }
+            return;
+        }
         if (requestCode != REQUEST_VPN) return;
         if (resultCode == RESULT_OK) {
             startVpnService();
@@ -425,6 +492,81 @@ public class KillAdActivity extends android.app.Activity {
             XtToast.show(this, R.string.killad_vpn_denied);
             refresh();
         }
+    }
+
+    /** 拉起系统文件选择器挑一个 txt 规则文件 */
+    private void pickImportFile() {
+        try {
+            Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+            i.setType("text/*");
+            i.addCategory(Intent.CATEGORY_OPENABLE);
+            startActivityForResult(Intent.createChooser(i, getString(R.string.killad_import_btn)), REQUEST_IMPORT);
+        } catch (Exception e) {
+            XtToast.show(this, getString(R.string.killad_import_fail, "无法打开文件选择器"));
+        }
+    }
+
+    /**
+     * 读取所选文件的文本内容并保存为导入规则。
+     *
+     * 内容不做预处理，原样写入：真正的解析发生在 KillAdRules 加载时，
+     * 那里会按一行一条识别纯域名 / 通配 / uBlock 锚 / hosts 写法，
+     * 识别不了的整条丢弃，所以这里既不需要也不应该改动文件内容。
+     * 读取是阻塞操作，放到工作线程。
+     */
+    private void importFromUri(final android.net.Uri uri) {
+        XtToast.show(this, getString(R.string.killad_rule_updating));
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String text = null;
+                String err = null;
+                java.io.InputStream is = null;
+                try {
+                    is = getContentResolver().openInputStream(uri);
+                    if (is == null) throw new Exception("无法读取文件");
+                    java.io.BufferedReader r = new java.io.BufferedReader(
+                            new java.io.InputStreamReader(is, "UTF-8"));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    int lines = 0;
+                    while ((line = r.readLine()) != null) {
+                        if (++lines > 300000) break;
+                        sb.append(line).append('\n');
+                    }
+                    r.close();
+                    text = sb.toString();
+                } catch (Throwable t) {
+                    err = t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage();
+                } finally {
+                    try { if (is != null) is.close(); } catch (Throwable ignored) {}
+                }
+
+                final String fText = text;
+                final String fErr = err;
+                int parsed = 0;
+                if (fErr == null && fText != null) {
+                    try {
+                        KillAdRules.setImportedRaw(KillAdActivity.this, fText);
+                        parsed = KillAdRules.countRules(fText);
+                    } catch (Throwable ignored) {}
+                }
+                final int fParsed = parsed;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (isFinishing()) return;
+                        if (fErr != null || fText == null) {
+                            XtToast.showLong(KillAdActivity.this,
+                                    getString(R.string.killad_import_fail, fErr == null ? "未知错误" : fErr));
+                        } else {
+                            XtToast.showLong(KillAdActivity.this, getString(R.string.killad_import_ok, fParsed));
+                        }
+                        refresh();
+                    }
+                });
+            }
+        }, "killad-import").start();
     }
 
     private void startVpnService() {

@@ -29,15 +29,16 @@ var SCHEMA = [
   ] },
   { title: '规则', items: [
     { type: 'note', key: 'rulesCount', text: '' },
-    { type: 'input', key: 'rule_url', placeholder: '规则源 .txt 链接', btnLabel: '保存' },
+    { type: 'note', text: '一行一个 .txt 链接，填多个时逐个下载后合并生效' },
+    { type: 'text', key: 'rule_url', rows: 3, saveLabel: '保存规则源' },
     { type: 'button', key: 'updateRules', label: '立即更新规则' },
     { type: 'note', key: 'rule_info', mono: true, text: '' }
   ] },
   { title: '上游 DNS', items: [
     { type: 'input', key: 'upstream', placeholder: '223.5.5.5', btnLabel: '保存' }
   ] },
-  { title: '自定义拦截域名', items: [
-    { type: 'note', text: '逗号 / 空格 / 换行分隔' },
+  { title: '自定义拦截规则', items: [
+    { type: 'note', text: '一行一条，支持域名、通配（* ?）、uBlock 写法（||域名^）、hosts 写法；含路径或 URL 的规则会被忽略' },
     { type: 'text', key: 'custom', rows: 4, saveLabel: '保存' }
   ] },
   { title: '运行日志', items: [
@@ -97,13 +98,13 @@ function onSwitch(key, val) {
 
 function onSave(key, text) {
   if (key === 'custom') XT.saveCustomDomains(text);
+  else if (key === 'rule_url') XT.saveRuleUrl(text);
 }
 
 function onButton(key, value) {
   switch (key) {
     case 'pauseBtn': XT.togglePause(); break;
     case 'updateRules': XT.updateRules(); break;
-    case 'rule_url_btn': XT.saveRuleUrl(value); break;
     case 'upstream_btn': XT.saveUpstream(value); break;
     case 'clearLog': XT.clearLog(); break;
     case 'back': XT.close(); break;

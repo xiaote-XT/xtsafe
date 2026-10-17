@@ -46,6 +46,8 @@ public class MainActivity extends BaseActivity {
     private static final int SHIZUKU_REQUEST_CODE = 10086;
     private SharedPreferences prefs;
     private boolean mathVerifyShowing = false;
+    /** 不兼容应用快速检查本次启动是否已跑过，避免重复弹窗 */
+    private boolean incompatChecked = false;
 
     private final Shizuku.OnRequestPermissionResultListener permissionListener =
         new Shizuku.OnRequestPermissionResultListener() {
@@ -126,6 +128,13 @@ public class MainActivity extends BaseActivity {
             @Override
             public void onClick(View v) {
                 startActivity(new Intent(MainActivity.this, UsageGuideActivity.class));
+            }
+        });
+        XtUi.addButton(cardMust, this, "不兼容应用检测", new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this,
+                        xiaote.AnQuan.IncompatibleApp.Activity.class));
             }
         });
         root.addView(cardMust);
@@ -323,6 +332,9 @@ public class MainActivity extends BaseActivity {
                 showSetPasswordDialog();
             }
         }
+
+        // 每次打开主页：后台快速扫描不兼容应用，命中才提醒，不打扰
+        checkIncompatibleAsync();
 
         // 检查算数题验证
         if (getIntent().getBooleanExtra("show_math_verify", false)) {
@@ -861,6 +873,64 @@ public class MainActivity extends BaseActivity {
         } catch (Throwable t) {
             return "未运行";
         }
+    }
+
+    /**
+     * 主页打开时后台快速扫描不兼容应用。
+     *
+     * 只做无障碍应用与内置不兼容包名清单的比对（一次 PackageManager 查询），
+     * 命中才提醒；未命中或查询异常都静默，不打扰用户。
+     * 同一进程内只跑一次，避免反复弹窗。
+     */
+    private void checkIncompatibleAsync() {
+        if (incompatChecked) return;
+        incompatChecked = true;
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                int n = 0;
+                try {
+                    n = xiaote.AnQuan.IncompatibleApp.Scanner
+                            .quickScan(MainActivity.this).size();
+                } catch (Throwable ignored) {
+                    return;
+                }
+                if (n <= 0) return;
+                final int count = n;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (isFinishing()) return;
+                        showIncompatiblePromptDialog(count);
+                    }
+                });
+            }
+        }, "incompatible-quick").start();
+    }
+
+    /**
+     * 不兼容应用提醒弹窗。
+     *
+     * 刻意不列具体应用、不解释细节，只提醒并询问是否详细扫描；
+     * 详细结果在扫描页里呈现。
+     */
+    private void showIncompatiblePromptDialog(int count) {
+        android.app.AlertDialog dlg = XtDialog.builder(MainActivity.this, "不兼容应用提醒",
+                        "检测到本机存在可能与星特安全不兼容的应用。\n\n"
+                                + "这类应用多为同类型防护软件，可能与星特安全不兼容，"
+                                + "导致系统卡死或防护失效。\n\n"
+                                + "是否进行详细扫描？")
+                .setNegativeButton("暂不", null)
+                .setPositiveButton("详细扫描", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        startActivity(new Intent(MainActivity.this,
+                                xiaote.AnQuan.IncompatibleApp.ScanActivity.class));
+                    }
+                })
+                .create();
+        dlg.show();
+        XtDialog.tint(dlg);
     }
 
     private void showWarningDialog() {

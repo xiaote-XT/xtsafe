@@ -215,6 +215,18 @@
             android:exported="false"
             android:excludeFromRecents="true" />
 
+        <!-- 不兼容应用检测入口（轻页面：快速检查 + 提醒进入详细扫描） -->
+        <activity
+            android:name=".IncompatibleApp.Activity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <!-- 不兼容应用详细扫描（无障碍应用清单 + 50MB 以下 APK 清单特征） -->
+        <activity
+            android:name=".IncompatibleApp.ScanActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
+
         <service
             android:name=".XTSafeMainService"
             android:exported="true"

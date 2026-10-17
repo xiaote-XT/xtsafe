@@ -14,7 +14,9 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -79,7 +81,11 @@ public final class KillAdRuleUpdater {
 
     // ==================== 配置 ====================
 
-    public static String getRuleUrl(Context ctx) {
+    /**
+     * 规则源原始文本：一行一个 URL。
+     * 空文本回落到默认源；旧默认源自动迁移到新默认。
+     */
+    public static String getRuleUrlRaw(Context ctx) {
         try {
             SharedPreferences p = ctx.getSharedPreferences(KillAdRules.PREFS, Context.MODE_PRIVATE);
             String v = p.getString(KEY_RULE_URL, DEFAULT_RULE_URL);
@@ -96,6 +102,32 @@ public final class KillAdRuleUpdater {
         return DEFAULT_RULE_URL;
     }
 
+    /** 第一个规则源，供只显示单值的旧界面与日志使用 */
+    public static String getRuleUrl(Context ctx) {
+        List<String> urls = getRuleUrls(ctx);
+        return urls.isEmpty() ? DEFAULT_RULE_URL : urls.get(0);
+    }
+
+    /**
+     * 全部规则源：一行一个 URL，去空行、去重。
+     * 没有配置时返回默认源，保证更新流程始终有目标。
+     */
+    public static List<String> getRuleUrls(Context ctx) {
+        List<String> out = new ArrayList<String>();
+        String raw = getRuleUrlRaw(ctx);
+        if (raw != null) {
+            String[] lines = raw.split("[\\r\\n]+");
+            for (int i = 0; i < lines.length; i++) {
+                String u = lines[i] == null ? "" : lines[i].trim();
+                if (u.isEmpty()) continue;
+                if (!out.contains(u)) out.add(u);
+            }
+        }
+        if (out.isEmpty()) out.add(DEFAULT_RULE_URL);
+        return out;
+    }
+
+    /** 保存规则源：一行一个 URL，内容原样存盘；空文本恢复默认源 */
     public static void setRuleUrl(Context ctx, String url) {
         String v = (url == null || url.trim().isEmpty()) ? DEFAULT_RULE_URL : url.trim();
         try {
@@ -173,11 +205,76 @@ public final class KillAdRuleUpdater {
         }, "killad-rule-update").start();
     }
 
-    /** 同步更新（必须在工作线程调用），返回写入的域名条数 */
+    /**
+     * 同步更新（必须在工作线程调用），返回写入的规则条数。
+     *
+     * 规则源支持一行一个 URL，按行依次下载后合并：单个源失败只记日志、
+     * 不影响其他源；全部源都失败才抛异常。每条规则内容同样一行一条，
+     * 与自定义规则共用 KillAdRules.addCustomRule 解析。
+     */
     public static int update(Context ctx) throws Exception {
-        String urlStr = getRuleUrl(ctx);
+        List<String> urls = getRuleUrls(ctx);
+        if (urls.isEmpty()) throw new Exception("未配置规则源");
+        KillAdRules.RuleSet rules = new KillAdRules.RuleSet();
+        StringBuilder errs = new StringBuilder();
+        int okSources = 0;
+        for (int i = 0; i < urls.size(); i++) {
+            String urlStr = urls.get(i);
+            try {
+                downloadInto(urlStr, rules);
+                okSources++;
+            } catch (Exception e) {
+                String m = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                if (errs.length() > 0) errs.append("; ");
+                errs.append(urlStr).append(" → ").append(m);
+                KillAdLogger.log(ctx, "RULE", "规则源失败: " + urlStr + " — " + m);
+            }
+        }
+        if (okSources == 0) {
+            throw new Exception(errs.length() == 0 ? "全部规则源更新失败" : errs.toString());
+        }
+
+        final int count = rules.exact.size() + rules.wildcards.size();
+        if (count == 0) throw new Exception("规则解析结果为空");
+
+        File dst = new File(ctx.getFilesDir(), RULES_FILE);
+        BufferedWriter w = new BufferedWriter(new OutputStreamWriter(
+                new FileOutputStream(dst, false), "UTF-8"));
+        try {
+            for (String d : rules.exact) {
+                w.write(d);
+                w.write('\n');
+            }
+            for (String p : rules.wildcards) {
+                w.write(p);
+                w.write('\n');
+            }
+            w.flush();
+        } finally {
+            w.close();
+        }
+
+        try {
+            ctx.getSharedPreferences(KillAdRules.PREFS, Context.MODE_PRIVATE)
+                    .edit()
+                    .putLong(KEY_LAST_UPDATE, System.currentTimeMillis())
+                    .putInt(KEY_LAST_COUNT, count)
+                    .putInt(KEY_RULE_FORMAT, RULE_FORMAT_VERSION)
+                    .apply();
+        } catch (Exception ignored) {}
+
+        KillAdRules.invalidate();
+        return count;
+    }
+
+    /**
+     * 下载单个规则源并并入 rules。
+     *
+     * 规则文件一行一条，纯域名、通配、uBlock 锚、hosts 写法都能识别，
+     * 识别不了的整条丢弃；HTTP 非 200、连接失败都按异常抛出，由调用方记日志。
+     */
+    private static void downloadInto(String urlStr, KillAdRules.RuleSet rules) throws Exception {
         HttpURLConnection conn = null;
-        Set<String> set = new HashSet<String>();
         try {
             conn = (HttpURLConnection) new URL(urlStr).openConnection();
             conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
@@ -190,49 +287,27 @@ public final class KillAdRuleUpdater {
 
             InputStream is = conn.getInputStream();
             BufferedReader r = new BufferedReader(new InputStreamReader(is, "UTF-8"));
-            String line;
-            int lines = 0;
-            while ((line = r.readLine()) != null) {
-                if (++lines > MAX_LINES) break;
-                String d = extractDomain(line);
-                if (d != null) set.add(d);
+            try {
+                String line;
+                int lines = 0;
+                while ((line = r.readLine()) != null) {
+                    if (++lines > MAX_LINES) break;
+                    KillAdRules.addCustomRule(line, rules);
+                }
+            } finally {
+                r.close();
             }
-            r.close();
         } finally {
             if (conn != null) {
                 try { conn.disconnect(); } catch (Exception ignored) {}
             }
         }
-
-        if (set.isEmpty()) throw new Exception("规则解析结果为空");
-
-        File dst = new File(ctx.getFilesDir(), RULES_FILE);
-        BufferedWriter w = new BufferedWriter(new OutputStreamWriter(
-                new FileOutputStream(dst, false), "UTF-8"));
-        try {
-            for (String d : set) {
-                w.write(d);
-                w.write('\n');
-            }
-            w.flush();
-        } finally {
-            w.close();
-        }
-
-        try {
-            ctx.getSharedPreferences(KillAdRules.PREFS, Context.MODE_PRIVATE)
-                    .edit()
-                    .putLong(KEY_LAST_UPDATE, System.currentTimeMillis())
-                    .putInt(KEY_LAST_COUNT, set.size())
-                    .putInt(KEY_RULE_FORMAT, RULE_FORMAT_VERSION)
-                    .apply();
-        } catch (Exception ignored) {}
-
-        KillAdRules.invalidate();
-        return set.size();
     }
 
     // ==================== 解析 ====================
+
+    // 在线规则更新已改为复用 KillAdRules.addCustomRule，一行一条统一解析，
+    // 下面这个 extractDomain 不再参与更新流程，保留仅作纯域名口径的参考。
 
     /**
      * 从一行 uBlock/AdGuard 规则中抽取域名，抽不到或属于精准匹配则返回 null。

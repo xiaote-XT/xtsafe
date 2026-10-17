@@ -229,7 +229,8 @@ public class H5KillAdActivity extends H5BaseActivity {
                     path.isEmpty() ? "-" : path,
                     KillAdVpnService.formatBytes(size)));
 
-            o.put("ruleUrl", KillAdRuleUpdater.getRuleUrl(this));
+            // 规则源一行一个链接，H5 侧显示原始多行文本，保存也回写原始文本
+            o.put("ruleUrl", KillAdRuleUpdater.getRuleUrlRaw(this));
             o.put("upstream", KillAdRules.getUpstream(this));
             o.put("customDomains", KillAdRules.getCustomDomains(this));
             o.put("showNotice", !prefs.getBoolean("killad_notice_dont_show", false));
